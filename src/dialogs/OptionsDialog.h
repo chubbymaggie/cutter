@@ -3,6 +3,8 @@
 
 #include <QDialog>
 #include <QStringList>
+#include <QTimer>
+#include <QElapsedTimer>
 #include <memory>
 #include "cutter.h"
 #include "AnalThread.h"
@@ -25,14 +27,14 @@ public:
 public slots:
     void updateProgress(const QString &str);
 private slots:
-    void on_closeButton_clicked();
     void on_okButton_clicked();
-    void on_cancelButton_clicked();
     void on_analSlider_valueChanged(int value);
     void on_AdvOptButton_clicked();
     void on_analCheckBox_clicked(bool checked);
     void on_archComboBox_currentIndexChanged(int index);
     void on_pdbSelectButton_clicked();
+
+    void updateProgressTimer();
 
     void updatePDBLayout();
 
@@ -47,12 +49,18 @@ private:
     QString analysisDescription(int level);
 
     void updateCPUComboBox();
+
+    void setInteractionEnabled(bool enabled);
+
 public:
     std::unique_ptr<Ui::OptionsDialog> ui;
     QString getSelectedArch();
     QString getSelectedCPU();
     int getSelectedBits();
     QString getSelectedOS();
+    QTimer analTimer;
+    QElapsedTimer analElapsedTimer;
+    void reject() override;
 };
 
 #endif // OPTIONSDIALOG_H

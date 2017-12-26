@@ -17,7 +17,6 @@ class DisassemblyWidget : public QDockWidget
     Q_OBJECT
 public:
     explicit DisassemblyWidget(QWidget *parent = nullptr);
-    explicit DisassemblyWidget(const QString &title, QWidget *parent = nullptr);
     QWidget* getTextWidget();
 
 public slots:
@@ -46,7 +45,12 @@ private:
     RVA bottomOffset;
     int maxLines;
 
-    QString readDisasm(const QString &cmd, bool stripLastNewline);
+    /*!
+     * offset of lines below the first line of the current seek
+     */
+    int cursorLineOffset;
+    bool seekFromCursor;
+
     RVA readCurrentDisassemblyOffset();
     RVA readDisassemblyOffset(QTextCursor tc);
     bool eventFilter(QObject *obj, QEvent *event);
@@ -57,6 +61,8 @@ private:
     void updateCursorPosition();
 
     void connectCursorPositionChanged(bool disconnect);
+
+    void moveCursorRelative(bool up, bool page);
 };
 
 class DisassemblyScrollArea : public QAbstractScrollArea

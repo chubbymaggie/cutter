@@ -21,7 +21,6 @@ public:
 private slots:
     void on_loadFileButton_clicked();
     void on_selectFileButton_clicked();
-    void on_createButton_clicked();
 
     void on_selectProjectsDirButton_clicked();
     void on_loadProjectButton_clicked();
@@ -37,6 +36,10 @@ private slots:
 
     void on_actionRemove_item_triggered();
     void on_actionClear_all_triggered();
+
+protected:
+    void dragEnterEvent(QDragEnterEvent *event);
+    void dropEvent(QDropEvent *event);
 
 private:
     std::unique_ptr<Ui::NewFileDialog> ui;

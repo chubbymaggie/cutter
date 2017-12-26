@@ -5,9 +5,9 @@
 
 #include "cutter.h" // only needed for ut64
 #include "widgets/DisassemblyWidget.h"
-#include "widgets/DisassemblerGraphView.h"
 #include "widgets/SidebarWidget.h"
 #include "widgets/HexdumpWidget.h"
+#include "widgets/PseudocodeWidget.h"
 #include "utils/Configuration.h"
 
 #include <QMainWindow>
@@ -19,7 +19,7 @@ class PreviewWidget;
 class Notepad;
 class Highlighter;
 class AsciiHighlighter;
-class GraphicsBar;
+class VisualNavbar;
 class FunctionsWidget;
 class ImportsWidget;
 class ExportsWidget;
@@ -36,6 +36,7 @@ class SectionsDock;
 class ConsoleWidget;
 class EntrypointWidget;
 class DisassemblerGraphView;
+class ClassesWidget;
 
 class QDockWidget;
 
@@ -75,6 +76,7 @@ public:
 
     void closeEvent(QCloseEvent *event) override;
     void readSettings();
+    void saveSettings();
     void setFilename(const QString &fn);
     void addOutput(const QString &msg);
     void addDebugOutput(const QString &msg);
@@ -86,20 +88,11 @@ public slots:
 
     void refreshAll();
 
+    void setPanelLock();
+    void setTabLocation();
+
     void setDarkTheme();
     void setDefaultTheme();
-
-    void on_actionEntry_points_triggered();
-    void on_actionFunctions_triggered();
-    void on_actionImports_triggered();
-    void on_actionExports_triggered();
-    void on_actionSymbols_triggered();
-    void on_actionReloc_triggered();
-    void on_actionStrings_triggered();
-    void on_actionSections_triggered();
-    void on_actionFlags_triggered();
-    void on_actionComents_triggered();
-    void on_actionNotepad_triggered();
 
     void on_actionLock_triggered();
 
@@ -107,11 +100,7 @@ public slots:
 
     void on_actionTabs_triggered();
 
-    void on_actionhide_bottomPannel_triggered();
-
     void lockUnlock_Docks(bool what);
-
-    void on_actionDashboard_triggered();
 
     void on_actionDark_Theme_triggered();
 
@@ -122,12 +111,9 @@ public slots:
     void backButton_clicked();
 
 private slots:
-
     void on_actionAbout_triggered();
 
     void on_actionRefresh_Panels_triggered();
-
-    void on_actionCreate_File_triggered();
 
     void on_actionDisasAdd_comment_triggered();
 
@@ -145,8 +131,6 @@ private slots:
 
     void on_actionWhite_Theme_triggered();
 
-    void on_actionSDBBrowser_triggered();
-
     void on_actionLoad_triggered();
 
     void on_actionForward_triggered();
@@ -159,7 +143,7 @@ private slots:
 
     void on_actionRefresh_contents_triggered();
 
-    void on_actionAsmOptions_triggered();
+    void on_actionPreferences_triggered();
 
     void projectSaved(const QString &name);
 
@@ -169,6 +153,7 @@ private:
     DisassemblyWidget  *disassemblyDock;
     SidebarWidget    *sidebarDock;
     HexdumpWidget    *hexdumpDock;
+    PseudocodeWidget *pseudocodeDock;
     QDockWidget      *graphDock;
     DisassemblerGraphView *graphView;
     QDockWidget      *asmDock;
@@ -177,15 +162,15 @@ private:
     //SideBar          *sideBar;
     Configuration   *configuration;
 
-    bool doLock;
+    bool panelLock;
+    bool tabsOnTop;
     ut64 hexdumpTopOffset;
     ut64 hexdumpBottomOffset;
     QString filename;
-    QList<QDockWidget *> dockWidgets;
     std::unique_ptr<Ui::MainWindow> ui;
     Highlighter      *highlighter;
     AsciiHighlighter *hex_highlighter;
-    GraphicsBar      *graphicsBar;
+    VisualNavbar     *visualNavbar;
     EntrypointWidget *entrypointDock;
     FunctionsWidget  *functionsDock;
     ImportsWidget    *importsDock;
@@ -200,15 +185,20 @@ private:
     SdbDock          *sdbDock;
     //QAction          *sidebar_action;
     SectionsDock     *sectionsDock;
-    ConsoleWidget    *consoleWidget;
+    ConsoleWidget    *consoleDock;
+    ClassesWidget    *classesDock;
 
-    void toggleDockWidget(QDockWidget *dock_widget);
+    QList<QDockWidget *> dockWidgets;
+    QMap<QAction *, QDockWidget *> dockWidgetActions;
+
+    void toggleDockWidget(QDockWidget *dock_widget, bool show);
 
     void resetToDefaultLayout();
 
     void restoreDocks();
     void hideAllDocks();
     void showDefaultDocks();
+    void updateDockActionsChecked();
 
 public:
     QString getFilename() const         { return filename; }

@@ -26,12 +26,12 @@
 /*     border: 2px solid white;*/
 }
 
-QTabBar
+QMainWindow &gt; QTabBar
 {
     qproperty-drawBase: 0;
 }
 
-QTabBar::tab {
+QMainWindow &gt; QTabBar::tab {
     border-bottom-color: #2180a9;
     border-top-left-radius: 0px;
     border-top-right-radius: 0px;
@@ -41,12 +41,12 @@ QTabBar::tab {
 	margin-top: 3px;
 }
 
-QTabBar::tab:selected {
+QMainWindow &gt; QTabBar::tab:selected {
     background: #2180a9;
     color: #FFFFFF;
 }
 
-QTabBar::tab:hover {
+QMainWindow &gt; QTabBar::tab:hover {
     background: #2180a9;      /* #3C879E; */
     color: #FFFFFF;
 }
@@ -178,8 +178,8 @@ border-top: 0px;
    <widget class="QMenu" name="menuFile">
     <property name="geometry">
      <rect>
-      <x>367</x>
-      <y>185</y>
+      <x>273</x>
+      <y>133</y>
       <width>140</width>
       <height>239</height>
      </rect>
@@ -204,13 +204,6 @@ border-top: 0px;
     <property name="tabsOnTop" stdset="0">
      <bool>false</bool>
     </property>
-    <widget class="QMenu" name="menuTheme">
-     <property name="title">
-      <string>Theme</string>
-     </property>
-     <addaction name="actionWhite_Theme"/>
-     <addaction name="actionDark_Theme"/>
-    </widget>
     <addaction name="actionRefresh_contents"/>
     <addaction name="separator"/>
     <addaction name="actionDefaut"/>
@@ -219,8 +212,7 @@ border-top: 0px;
     <addaction name="actionLock"/>
     <addaction name="actionTabs_on_Top"/>
     <addaction name="separator"/>
-    <addaction name="actionAsmOptions"/>
-    <addaction name="menuTheme"/>
+    <addaction name="actionPreferences"/>
    </widget>
    <widget class="QMenu" name="menuHelp">
     <property name="title">
@@ -241,20 +233,28 @@ border-top: 0px;
     </property>
     <addaction name="actionDashboard"/>
     <addaction name="separator"/>
-    <addaction name="actionEntry_points"/>
+    <addaction name="actionDisassembly"/>
+    <addaction name="actionGraph"/>
+    <addaction name="actionHexdump"/>
+    <addaction name="actionPseudocode"/>
+    <addaction name="actionSidebar"/>
+    <addaction name="separator"/>
+    <addaction name="actionEntrypoints"/>
     <addaction name="actionFunctions"/>
+    <addaction name="actionClasses"/>
     <addaction name="actionImports"/>
     <addaction name="actionExports"/>
     <addaction name="actionSymbols"/>
     <addaction name="actionSDBBrowser"/>
     <addaction name="separator"/>
-    <addaction name="actionReloc"/>
+    <addaction name="actionRelocs"/>
     <addaction name="actionStrings"/>
     <addaction name="actionFlags"/>
     <addaction name="actionSections"/>
     <addaction name="separator"/>
-    <addaction name="actionComents"/>
+    <addaction name="actionComments"/>
     <addaction name="actionNotepad"/>
+    <addaction name="actionConsole"/>
    </widget>
    <addaction name="menuFile"/>
    <addaction name="menuEdit"/>
@@ -481,7 +481,7 @@ QToolButton:pressed {
   </action>
   <action name="actionStrings">
    <property name="checkable">
-    <bool>false</bool>
+    <bool>true</bool>
    </property>
    <property name="text">
     <string>Strings</string>
@@ -492,7 +492,7 @@ QToolButton:pressed {
   </action>
   <action name="actionSections">
    <property name="checkable">
-    <bool>false</bool>
+    <bool>true</bool>
    </property>
    <property name="text">
     <string>Sections</string>
@@ -503,7 +503,7 @@ QToolButton:pressed {
   </action>
   <action name="actionFunctions">
    <property name="checkable">
-    <bool>false</bool>
+    <bool>true</bool>
    </property>
    <property name="text">
     <string>Functions</string>
@@ -514,7 +514,7 @@ QToolButton:pressed {
   </action>
   <action name="actionImports">
    <property name="checkable">
-    <bool>false</bool>
+    <bool>true</bool>
    </property>
    <property name="text">
     <string>Imports</string>
@@ -525,7 +525,7 @@ QToolButton:pressed {
   </action>
   <action name="actionSymbols">
    <property name="checkable">
-    <bool>false</bool>
+    <bool>true</bool>
    </property>
    <property name="text">
     <string>Symbols</string>
@@ -534,9 +534,9 @@ QToolButton:pressed {
     <string>Show/Hide Symbols panel</string>
    </property>
   </action>
-  <action name="actionReloc">
+  <action name="actionRelocs">
    <property name="checkable">
-    <bool>false</bool>
+    <bool>true</bool>
    </property>
    <property name="text">
     <string>Relocs</string>
@@ -547,7 +547,7 @@ QToolButton:pressed {
   </action>
   <action name="actionFlags">
    <property name="checkable">
-    <bool>false</bool>
+    <bool>true</bool>
    </property>
    <property name="text">
     <string>Flags</string>
@@ -606,9 +606,9 @@ QToolButton:pressed {
     <string>Refresh</string>
    </property>
   </action>
-  <action name="actionComents">
+  <action name="actionComments">
    <property name="checkable">
-    <bool>false</bool>
+    <bool>true</bool>
    </property>
    <property name="text">
     <string>Comments</string>
@@ -646,22 +646,9 @@ QToolButton:pressed {
     <string>Default Theme</string>
    </property>
   </action>
-  <action name="actionCreate_File">
-   <property name="text">
-    <string>Create file</string>
-   </property>
-   <property name="toolTip">
-    <string>Create file</string>
-   </property>
-  </action>
   <action name="actionBindiff">
    <property name="text">
     <string>Bindiff</string>
-   </property>
-  </action>
-  <action name="actionGraph">
-   <property name="text">
-    <string>Graph</string>
    </property>
   </action>
   <action name="actionSearch">
@@ -869,11 +856,17 @@ QToolButton:pressed {
    </property>
   </action>
   <action name="actionNotepad">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
    <property name="text">
     <string>Notepad</string>
    </property>
   </action>
   <action name="actionSDBBrowser">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
    <property name="text">
     <string>SDB Browser</string>
    </property>
@@ -884,6 +877,9 @@ QToolButton:pressed {
    </property>
   </action>
   <action name="actionDashboard">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
    <property name="text">
     <string>Dashboard</string>
    </property>
@@ -908,6 +904,9 @@ QToolButton:pressed {
    </property>
   </action>
   <action name="actionExports">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
    <property name="text">
     <string>Exports</string>
    </property>
@@ -939,7 +938,10 @@ QToolButton:pressed {
     <string>Show pseudocode rather than assembly</string>
    </property>
   </action>
-  <action name="actionEntry_points">
+  <action name="actionEntrypoints">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
    <property name="text">
     <string>Entry Points</string>
    </property>
@@ -955,9 +957,9 @@ QToolButton:pressed {
     <string>Display offsets</string>
    </property>
   </action>
-  <action name="actionAsmOptions">
+  <action name="actionPreferences">
    <property name="text">
-    <string>Disassembly Options</string>
+    <string>Preferences</string>
    </property>
   </action>
   <action name="actionSaveAs">
@@ -968,6 +970,62 @@ QToolButton:pressed {
   <action name="actionTmp">
    <property name="text">
     <string>Tmp</string>
+   </property>
+  </action>
+  <action name="actionDisassembly">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>Disassembly</string>
+   </property>
+  </action>
+  <action name="actionGraph">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>Graph</string>
+   </property>
+  </action>
+  <action name="actionPseudocode">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>Pseudocode</string>
+   </property>
+  </action>
+  <action name="actionHexdump">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>Hexdump</string>
+   </property>
+  </action>
+  <action name="actionSidebar">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>Sidebar</string>
+   </property>
+  </action>
+  <action name="actionConsole">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>Console</string>
+   </property>
+  </action>
+  <action name="actionClasses">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>Classes</string>
    </property>
   </action>
  </widget>

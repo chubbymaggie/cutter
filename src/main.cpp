@@ -7,7 +7,7 @@
 #include "dialogs/NewFileDialog.h"
 #include "dialogs/OptionsDialog.h"
 
-#ifdef __unix__
+#ifdef APPIMAGE
 #define PREFIX "/tmp/.cutter_usr"
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -37,7 +37,7 @@ int main(int argc, char *argv[])
     a.setOrganizationName("cutter");
     a.setApplicationName("cutter");
     a.setApplicationVersion(APP_VERSION);
-    a.setWindowIcon(QIcon(":/img/cutter_appicon.svg"));
+    a.setWindowIcon(QIcon(":/img/cutter.svg"));
 
     // Set QString codec to UTF-8
     QTextCodec::setCodecForLocale(QTextCodec::codecForName("UTF-8"));
@@ -109,13 +109,13 @@ int main(int argc, char *argv[])
     }
 
     // Hack to make it work with AppImage
-#ifdef __unix__
+#ifdef APPIMAGE
     set_appimage_symlink();
 #endif
 
     int ret = a.exec();
 
-#ifdef __unix__
+#ifdef APPIMAGE
     remove(PREFIX);
 #endif
 

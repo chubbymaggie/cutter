@@ -30,7 +30,7 @@
 #define __question(x) (QMessageBox::Yes==QMessageBox::question (this, "Alert", QString(x), QMessageBox::Yes| QMessageBox::No))
 
 #define APPNAME "Cutter"
-#define CUTTER_VERSION "1.0"
+#define CUTTER_VERSION "1.1"
 
 #define Core() (CutterCore::getInstance())
 
@@ -168,6 +168,33 @@ struct RBinPluginDescription
     QString type;
 };
 
+struct DisassemblyLine
+{
+    RVA offset;
+    QString text;
+};
+
+struct ClassMethodDescription
+{
+    QString name;
+    RVA addr;
+};
+
+struct ClassFieldDescription
+{
+    QString name;
+    RVA addr;
+};
+
+struct ClassDescription
+{
+    QString name;
+    RVA addr;
+    ut64 index;
+    QList<ClassMethodDescription> methods;
+    QList<ClassFieldDescription> fields;
+};
+
 Q_DECLARE_METATYPE(FunctionDescription)
 Q_DECLARE_METATYPE(ImportDescription)
 Q_DECLARE_METATYPE(ExportDescription)
@@ -180,6 +207,12 @@ Q_DECLARE_METATYPE(FlagDescription)
 Q_DECLARE_METATYPE(XrefDescription)
 Q_DECLARE_METATYPE(EntrypointDescription)
 Q_DECLARE_METATYPE(RBinPluginDescription)
+Q_DECLARE_METATYPE(ClassMethodDescription)
+Q_DECLARE_METATYPE(ClassFieldDescription)
+Q_DECLARE_METATYPE(ClassDescription)
+Q_DECLARE_METATYPE(const ClassDescription *)
+Q_DECLARE_METATYPE(const ClassMethodDescription *)
+Q_DECLARE_METATYPE(const ClassFieldDescription *)
 
 class CutterCore: public QObject
 {
@@ -193,20 +226,22 @@ public:
 
     /* Getters */
     RVA getOffset() const { return core_->offset; }
-    int getCycloComplex(ut64 addr);
-    int getFcnSize(ut64 addr);
-    int fcnCyclomaticComplexity(ut64 addr);
-    int fcnBasicBlockCount(ut64 addr);
-    int fcnEndBbs(RVA addr);
+
     static QString sanitizeStringForCommand(QString s);
     QString cmd(const QString &str);
+    QString cmdRaw(const QString &str);
     QJsonDocument cmdj(const QString &str);
     QStringList cmdList(const QString &str)     { auto l = cmd(str).split("\n"); l.removeAll(""); return l; }
-    void renameFunction(QString prev_name, QString new_name);
+
+    QList<DisassemblyLine> disassembleLines(RVA offset, int lines);
+
+    void renameFunction(const QString &oldName, const QString &newName);
+    void delFunction(RVA addr);
     void renameFlag(QString old_name, QString new_name);
+    void delFlag(RVA addr);
 
     void setComment(RVA addr, const QString &cmt);
-    void delComment(ut64 addr);
+    void delComment(RVA addr);
 
     void setImmediateBase(const QString &r2BaseName, RVA offset = RVA_INVALID);
 
@@ -225,8 +260,8 @@ public:
     RVA prevOpAddr(RVA startAddr, int count);
     RVA nextOpAddr(RVA startAddr, int count);
 
-    // Disassembly/Graph/Hexdump view priority
-    enum class MemoryWidgetType { Disassembly, Graph, Hexdump };
+    // Disassembly/Graph/Hexdump/Pseudocode view priority
+    enum class MemoryWidgetType { Disassembly, Graph, Hexdump, Pseudocode };
     MemoryWidgetType getMemoryWidgetPriority() const            { return memoryWidgetPriority; }
     void setMemoryWidgetPriority(MemoryWidgetType type)         { memoryWidgetPriority = type; }
     void triggerRaisePrioritizedMemoryWidget()                  { emit raisePrioritizedMemoryWidget(memoryWidgetPriority); }
@@ -252,6 +287,9 @@ public:
     QString cmdFunctionAt(QString addr);
     QString cmdFunctionAt(RVA addr);
 
+    QString createFunctionAt(RVA addr, QString name);
+    void markString(RVA addr);
+
     /* SDB */
     QList<QString> sdbList(QString path);
     QList<QString> sdbListKeys(QString path);
@@ -262,12 +300,12 @@ public:
     QList<QList<QString>> get_exec_sections();
     QString getOffsetInfo(QString addr);
     RVA getOffsetJump(RVA addr);
+    QString getDecompiledCode(RVA addr);
     QString getDecompiledCode(QString addr);
     QString getFileInfo();
     QStringList getStats();
     QString getSimpleGraph(QString function);
-    QString binStart;
-    QString binEnd;
+
     void getOpcodes();
     QList<QString> opcodes;
     QList<QString> regs;
@@ -302,6 +340,7 @@ public:
     QList<FlagDescription> getAllFlags(QString flagspace = NULL);
     QList<SectionDescription> getAllSections();
     QList<EntrypointDescription> getAllEntrypoint();
+    QList<ClassDescription> getAllClasses();
 
     QList<XrefDescription> getXRefs(RVA addr, bool to, bool whole_function, const QString &filterType = QString::null);
 
@@ -314,9 +353,13 @@ public:
     void triggerRefreshAll();
 
     void triggerAsmOptionsChanged();
+    void triggerGraphOptionsChanged();
 
     void resetDefaultAsmOptions();
     void saveDefaultAsmOptions();
+
+    void loadScript(const QString &scriptname);
+    QString getVersionInformation();
 
     RCoreLocked core() const;
 
@@ -327,8 +370,9 @@ public:
 signals:
     void refreshAll();
 
-    void functionRenamed(QString prev_name, QString new_name);
+    void functionRenamed(const QString &prev_name, const QString &new_name);
     void varsChanged();
+    void functionsChanged();
     void flagsChanged();
     void commentsChanged();
     void instructionChanged(RVA offset);
@@ -340,6 +384,11 @@ signals:
      * emitted when config regarding disassembly display changes
      */
     void asmOptionsChanged();
+
+    /*!
+     * emitted when config regarding graph display changes
+     */
+    void graphOptionsChanged();
 
     /*!
      * \brief seekChanged is emitted each time radare2 seek value is modified

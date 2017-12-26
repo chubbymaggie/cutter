@@ -1,5 +1,5 @@
 #include "DisassemblyContextMenu.h"
-#include "dialogs/AsmOptionsDialog.h"
+#include "dialogs/preferences/PreferencesDialog.h"
 #include "dialogs/CommentsDialog.h"
 #include "dialogs/FlagDialog.h"
 #include "dialogs/RenameDialog.h"
@@ -14,10 +14,14 @@ DisassemblyContextMenu::DisassemblyContextMenu(QWidget *parent)
         actionCopy(this),
         actionAddComment(this),
         actionAddFlag(this),
+        actionCreateFunction(this),
         actionRename(this),
         actionRenameUsedHere(this),
         actionXRefs(this),
         actionDisplayOptions(this),
+        actionDeleteComment(this),
+        actionDeleteFlag(this),
+        actionDeleteFunction(this),
         actionSetBaseBinary(this),
         actionSetBaseOctal(this),
         actionSetBaseDecimal(this),
@@ -27,26 +31,17 @@ DisassemblyContextMenu::DisassemblyContextMenu(QWidget *parent)
         actionSetBaseSyscall(this),
         actionSetBaseString(this)
 {
-    actionCopy.setText(tr("Copy"));
-    this->addAction(&actionCopy);
-    actionCopy.setShortcut(getCopySequence());
+    createAction(&actionCopy, tr("Copy"), getCopySequence(), SLOT(on_actionCopy_triggered()));
     copySeparator = addSeparator();
+    createAction(&actionAddComment, tr("Add Comment"), getCommentSequence(), SLOT(on_actionAddComment_triggered()));
+    createAction(&actionAddFlag, tr("Add Flag"), getAddFlagSequence(), SLOT(on_actionAddFlag_triggered()));
+    createAction(&actionCreateFunction, tr("Create Function"), {}, SLOT(on_actionCreateFunction_triggered()));
+    createAction(&actionRename, tr("Rename"), getRenameSequence(), SLOT(on_actionRename_triggered()));
+    createAction(&actionRenameUsedHere, "Rename Flag/Fcn/Var Used Here", getRenameUsedHereSequence(), SLOT(on_actionRenameUsedHere_triggered()));
 
-    actionAddComment.setText(tr("Add Comment"));
-    this->addAction(&actionAddComment);
-    actionAddComment.setShortcut(getCommentSequence());
-
-    actionAddFlag.setText(tr("Add Flag"));
-    this->addAction(&actionAddFlag);
-    actionAddFlag.setShortcut(getAddFlagSequence());
-
-    actionRename.setText(tr("Rename"));
-    this->addAction(&actionRename);
-    actionRename.setShortcut(getRenameSequence());
-
-    actionRenameUsedHere.setText(("Rename Flag/Fcn/Var Used Here"));
-    this->addAction(&actionRenameUsedHere);
-    actionRenameUsedHere.setShortcut(getRenameUsedHereSequence());
+    createAction(&actionDeleteComment, tr("Delete comment"), {}, SLOT(on_actionDeleteComment_triggered()));
+    createAction(&actionDeleteFlag, tr("Delete flag"), {}, SLOT(on_actionDeleteFlag_triggered()));
+    createAction(&actionDeleteFunction, tr("Undefine function"), {}, SLOT(on_actionDeleteFunction_triggered()));
 
     setBaseMenu = new QMenu(tr("Set Immediate Base to..."), this);
     setBaseMenuAction = addMenu(setBaseMenu);
@@ -66,41 +61,9 @@ DisassemblyContextMenu::DisassemblyContextMenu(QWidget *parent)
     setBaseMenu->addAction(&actionSetBaseSyscall);
     actionSetBaseString.setText(tr("String"));
     setBaseMenu->addAction(&actionSetBaseString);
-
-    this->addSeparator();
-    actionXRefs.setText(tr("Show X-Refs"));
-    this->addAction(&actionXRefs);
-    actionXRefs.setShortcut(getXRefSequence());
-
-    this->addSeparator();
-    actionDisplayOptions.setText(tr("Show Options"));
-    actionDisplayOptions.setShortcut(getDisplayOptionsSequence());
-    this->addAction(&actionDisplayOptions);
-
-    auto pWidget = parentWidget();
-
-#define ADD_SHORTCUT(sequence, slot) { \
-    QShortcut *shortcut = new QShortcut((sequence), pWidget); \
-    shortcut->setContext(Qt::WidgetWithChildrenShortcut); \
-    connect(shortcut, &QShortcut::activated, this, (slot)); \
-}
-    ADD_SHORTCUT(getCopySequence(), &DisassemblyContextMenu::on_actionCopy_triggered);
-    ADD_SHORTCUT(getDisplayOptionsSequence(), &DisassemblyContextMenu::on_actionDisplayOptions_triggered);
-    ADD_SHORTCUT(getXRefSequence(), &DisassemblyContextMenu::on_actionXRefs_triggered);
-    ADD_SHORTCUT(getCommentSequence(), &DisassemblyContextMenu::on_actionAddComment_triggered);
-    ADD_SHORTCUT(getAddFlagSequence(), &DisassemblyContextMenu::on_actionAddFlag_triggered);
-    ADD_SHORTCUT(getRenameSequence(), &DisassemblyContextMenu::on_actionRename_triggered);
-    ADD_SHORTCUT(getRenameUsedHereSequence(), &DisassemblyContextMenu::on_actionRenameUsedHere_triggered);
-#undef ADD_SHORTCUT
-
-    connect(&actionCopy, SIGNAL(triggered(bool)), this, SLOT(on_actionCopy_triggered()));
-
-    connect(&actionAddComment, SIGNAL(triggered(bool)), this, SLOT(on_actionAddComment_triggered()));
-    connect(&actionAddFlag, SIGNAL(triggered(bool)), this, SLOT(on_actionAddFlag_triggered()));
-    connect(&actionRename, SIGNAL(triggered(bool)), this, SLOT(on_actionRename_triggered()));
-    connect(&actionRenameUsedHere, SIGNAL(triggered(bool)), this, SLOT(on_actionRenameUsedHere_triggered()));
-    connect(&actionXRefs, SIGNAL(triggered(bool)), this, SLOT(on_actionXRefs_triggered()));
-    connect(&actionDisplayOptions, SIGNAL(triggered()), this, SLOT(on_actionDisplayOptions_triggered()));
+    addSeparator();
+    createAction(&actionXRefs, tr("Show X-Refs"), getXRefSequence(), SLOT(on_actionXRefs_triggered()));
+    createAction(&actionDisplayOptions, tr("Show Options"), getDisplayOptionsSequence(), SLOT(on_actionDisplayOptions_triggered()));
 
     connect(&actionSetBaseBinary, SIGNAL(triggered(bool)), this, SLOT(on_actionSetBaseBinary_triggered()));
     connect(&actionSetBaseOctal, SIGNAL(triggered(bool)), this, SLOT(on_actionSetBaseOctal_triggered()));
@@ -112,6 +75,14 @@ DisassemblyContextMenu::DisassemblyContextMenu(QWidget *parent)
     connect(&actionSetBaseString, SIGNAL(triggered(bool)), this, SLOT(on_actionSetBaseString_triggered()));
 
     connect(this, SIGNAL(aboutToShow()), this, SLOT(aboutToShowSlot()));
+}
+
+DisassemblyContextMenu::~DisassemblyContextMenu()
+{
+    for(QAction *action : anonymousActions)
+    {
+        delete action;
+    }
 }
 
 void DisassemblyContextMenu::setOffset(RVA offset)
@@ -132,14 +103,17 @@ void DisassemblyContextMenu::aboutToShowSlot()
     bool immBase = keys.contains("val") || keys.contains("ptr");
     setBaseMenuAction->setVisible(immBase);
 
-    QJsonObject disasObject = Core()->cmdj("pdj 1 @ " + QString::number(offset)).array().first().toObject();
-    QString comment = disasObject["comment"].toString();
-    if (comment.isNull() || QByteArray::fromBase64(comment.toUtf8()).isEmpty())
+    actionCreateFunction.setVisible(true);
+
+    QString comment = Core()->cmd("CC." + RAddressString(offset));
+    if (comment.isNull() || comment.isEmpty())
     {
+        actionDeleteComment.setVisible(false);
         actionAddComment.setText(tr("Add Comment"));
     }
     else
     {
+        actionDeleteComment.setVisible(true);
         actionAddComment.setText(tr("Edit Comment"));
     }
 
@@ -150,8 +124,13 @@ void DisassemblyContextMenu::aboutToShowSlot()
     RCore *core = Core()->core();
     RAnalFunction *fcn = r_anal_get_fcn_at (core->anal, offset, R_ANAL_FCN_TYPE_NULL);
     RFlagItem *f = r_flag_get_i (core->flags, offset);
+
+    actionDeleteFlag.setVisible(f ? true : false);
+    actionDeleteFunction.setVisible(fcn ? true : false);
+
     if (fcn)
     {
+        actionCreateFunction.setVisible(false);
         actionRename.setVisible(true);
         actionRename.setText(tr("Rename function \"%1\"").arg(fcn->name));
     }
@@ -230,12 +209,12 @@ void DisassemblyContextMenu::on_actionCopy_triggered()
 
 void DisassemblyContextMenu::on_actionAddComment_triggered()
 {
-    QJsonObject disasObject = Core()->cmdj("pdj 1 @ " + QString::number(offset)).array().first().toObject();
-    QString oldComment = QString::fromUtf8(QByteArray::fromBase64(disasObject["comment"].toString().toUtf8()));
-
+    QString oldComment = Core()->cmd("CC." + RAddressString(offset));
+    // Remove newline at the end added by cmd
+    oldComment.remove(oldComment.length()-1, 1);
     CommentsDialog *c = new CommentsDialog(this);
 
-    if (oldComment.isNull() || QByteArray::fromBase64(oldComment.toUtf8()).isEmpty())
+    if (oldComment.isNull() || oldComment.isEmpty())
     {
         c->setWindowTitle(tr("Add Comment at %1").arg(RAddressString(offset)));
     }
@@ -256,6 +235,17 @@ void DisassemblyContextMenu::on_actionAddComment_triggered()
         {
             Core()->setComment(offset, comment);
         }
+    }
+}
+
+void DisassemblyContextMenu::on_actionCreateFunction_triggered()
+{
+    RenameDialog *dialog = new RenameDialog(this);
+    dialog->setWindowTitle(tr("Add function at %1").arg(RAddressString(offset)));
+    if(dialog->exec())
+    {
+        QString function_name = dialog->getName();
+        Core()->createFunctionAt(offset, function_name);
     }
 }
 
@@ -361,8 +351,24 @@ void DisassemblyContextMenu::on_actionXRefs_triggered()
 
 void DisassemblyContextMenu::on_actionDisplayOptions_triggered()
 {
-    AsmOptionsDialog *dialog = new AsmOptionsDialog(this->parentWidget());
+    auto *dialog = new PreferencesDialog(this->window());
+    dialog->showSection(PreferencesDialog::Section::Disassembly);
     dialog->show();
+}
+
+void DisassemblyContextMenu::on_actionDeleteComment_triggered()
+{
+    Core()->delComment(offset);
+}
+
+void DisassemblyContextMenu::on_actionDeleteFlag_triggered()
+{
+    Core()->delFlag(offset);
+}
+
+void DisassemblyContextMenu::on_actionDeleteFunction_triggered()
+{
+    Core()->delFunction(offset);
 }
 
 void DisassemblyContextMenu::on_actionSetBaseBinary_triggered()
@@ -403,4 +409,25 @@ void DisassemblyContextMenu::on_actionSetBaseSyscall_triggered()
 void DisassemblyContextMenu::on_actionSetBaseString_triggered()
 {
     Core()->setImmediateBase("s", offset);
+}
+
+void DisassemblyContextMenu::createAction(QString name, QKeySequence keySequence, const char *slot)
+{
+    QAction *action = new QAction(this);
+    anonymousActions.append(action);
+    createAction(action, name, keySequence, slot);
+}
+
+void DisassemblyContextMenu::createAction(QAction *action, QString name, QKeySequence keySequence, const char *slot)
+{
+    action->setText(name);
+    addAction(action);
+    action->setShortcut(keySequence);
+
+    connect(action, SIGNAL(triggered(bool)), this, slot);
+
+    auto pWidget = parentWidget();
+    QShortcut *shortcut = new QShortcut(keySequence, pWidget);
+    shortcut->setContext(Qt::WidgetWithChildrenShortcut);
+    connect(shortcut, SIGNAL(activated()), this, slot);
 }

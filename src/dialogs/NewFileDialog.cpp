@@ -1,5 +1,5 @@
 #include "OptionsDialog.h"
-#include "dialogs/CreateNewDialog.h"
+#include "MainWindow.h"
 #include "dialogs/NewFileDialog.h"
 #include "dialogs/AboutDialog.h"
 #include "ui_NewfileDialog.h"
@@ -8,6 +8,8 @@
 #include <QtGui>
 #include <QMessageBox>
 #include <QDir>
+#include <QPushButton>
+#include <QLineEdit>
 
 const int NewFileDialog::MaxRecentFiles;
 
@@ -65,10 +67,11 @@ NewFileDialog::NewFileDialog(QWidget *parent) :
 {
     ui->setupUi(this);
     setWindowFlags(windowFlags() & (~Qt::WindowContextHelpButtonHint));
+    setAcceptDrops(true);
     ui->recentsListWidget->addAction(ui->actionRemove_item);
     ui->recentsListWidget->addAction(ui->actionClear_all);
 
-    QString logoFile = (palette().window().color().value() < 127) ? ":/img/cutter_white.svg" : ":/img/cutter.svg";
+    QString logoFile = (palette().window().color().value() < 127) ? ":/img/cutter_white_plain.svg" : ":/img/cutter_plain.svg";
     ui->logoSvgWidget->load(logoFile);
 
     fillRecentFilesList();
@@ -83,10 +86,10 @@ NewFileDialog::NewFileDialog(QWidget *parent) :
         ui->tabWidget->setCurrentWidget(ui->filesTab);
     }
 
-    // Hide "create" button until the dialog works
-    ui->createButton->hide();
-
     ui->loadProjectButton->setEnabled(ui->projectsListWidget->currentItem() != nullptr);
+
+    /* Set focus on the TextInput */
+    ui->newFileEdit->setFocus();
 }
 
 NewFileDialog::~NewFileDialog() {}
@@ -197,14 +200,6 @@ void NewFileDialog::on_actionRemove_item_triggered()
     ui->newFileEdit->clear();
 }
 
-void NewFileDialog::on_createButton_clicked()
-{
-    // Close dialog and open create new file dialog
-    close();
-    CreateNewDialog *n = new CreateNewDialog(nullptr);
-    n->exec();
-}
-
 void NewFileDialog::on_actionClear_all_triggered()
 {
     // Clear recent file list
@@ -216,6 +211,28 @@ void NewFileDialog::on_actionClear_all_triggered()
     // TODO: if called from main window its ok, otherwise its not
     settings.setValue("recentFileList", files);
     ui->newFileEdit->clear();
+}
+
+void NewFileDialog::dragEnterEvent(QDragEnterEvent *event)
+{
+    // Accept drag & drop events only if they provide a URL
+    if(event->mimeData()->hasUrls())
+    {
+        event->acceptProposedAction();
+    }
+}
+
+void NewFileDialog::dropEvent(QDropEvent *event)
+{
+    // Accept drag & drop events only if they provide a URL
+    if(event->mimeData()->urls().count() == 0)
+    {
+        qWarning() << "No URL in drop event, ignoring it.";
+        return;
+    }
+
+    event->acceptProposedAction();
+    loadFile(event->mimeData()->urls().first().path());
 }
 
 bool NewFileDialog::fillRecentFilesList()
@@ -311,8 +328,6 @@ void NewFileDialog::loadFile(const QString &filename)
         // Close dialog and open MainWindow/OptionsDialog
         MainWindow *main = new MainWindow();
         main->openNewFile(filename);
-        //OptionsDialog *o = new OptionsDialog(fname);
-        //o->exec();
 
         close();
     }

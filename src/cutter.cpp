@@ -1,5 +1,6 @@
 #include <QJsonArray>
 #include <QJsonObject>
+#include <utils/TempConfig.h>
 #include "utils/Configuration.h"
 #include "cutter.h"
 #include "sdb.h"
@@ -71,41 +72,6 @@ CutterCore::CutterCore(QObject *parent) :
 CutterCore *CutterCore::getInstance()
 {
     return uniqueInstance;
-}
-
-
-int CutterCore::getCycloComplex(ut64 addr)
-{
-    CORE_LOCK();
-    QString ret = "";
-    RAnalFunction *fcn = r_anal_get_fcn_in(core_->anal, addr, 0);
-    if (fcn)
-    {
-        ret = cmd("afcc @ " + QString(fcn->name));
-        return ret.toInt();
-    }
-    else
-    {
-        return 0;
-    }
-}
-
-int CutterCore::getFcnSize(ut64 addr)
-{
-    CORE_LOCK();
-    QString ret = "";
-    QString tmp_ret = "";
-    RAnalFunction *fcn = r_anal_get_fcn_in(core_->anal, addr, 0);
-    if (fcn)
-    {
-        tmp_ret = cmd("afi~size[1] " + QString(fcn->name));
-        ret = tmp_ret.split("\n")[0];
-        return ret.toInt() / 10;
-    }
-    else
-    {
-        return 0;
-    }
 }
 
 QList<QString> CutterCore::sdbList(QString path)
@@ -202,6 +168,13 @@ QString CutterCore::cmd(const QString &str)
     return o;
 }
 
+QString CutterCore::cmdRaw(const QString &str)
+{
+    QString cmdStr = str;
+    cmdStr.replace('\"', "\\\"");
+    return cmd("\"" + cmdStr + "\"");
+}
+
 QJsonDocument CutterCore::cmdj(const QString &str)
 {
     CORE_LOCK();
@@ -222,7 +195,7 @@ QJsonDocument CutterCore::cmdj(const QString &str)
 
     if (jsonError.error != QJsonParseError::NoError)
     {
-        eprintf("Failed to parse JSON: %s\n", jsonError.errorString().toLocal8Bit().constData());
+        eprintf("Failed to parse JSON for command \"%s\": %s\n", str.toLocal8Bit().constData(), jsonError.errorString().toLocal8Bit().constData());
         eprintf("%s\n", resString.toLocal8Bit().constData());
     }
 
@@ -321,15 +294,27 @@ void CutterCore::analyze(int level,  QList<QString> advanced)
     }
 }
 
-void CutterCore::renameFunction(QString old_name, QString new_name)
+void CutterCore::renameFunction(const QString &oldName, const QString &newName)
 {
-    cmd("afn " + new_name + " " + old_name);
-    emit functionRenamed(old_name, new_name);
+    cmdRaw("afn " + newName + " " + oldName);
+    emit functionRenamed(oldName, newName);
+}
+
+void CutterCore::delFunction(RVA addr)
+{
+    cmd("af- " + RAddressString(addr));
+    emit functionsChanged();
 }
 
 void CutterCore::renameFlag(QString old_name, QString new_name)
 {
-    cmd("fr " + old_name + " " + new_name);
+    cmdRaw("fr " + old_name + " " + new_name);
+    emit flagsChanged();
+}
+
+void CutterCore::delFlag(RVA addr)
+{
+    cmd("f-@" + RAddressString(addr));
     emit flagsChanged();
 }
 
@@ -339,7 +324,7 @@ void CutterCore::setComment(RVA addr, const QString &cmt)
     emit commentsChanged();
 }
 
-void CutterCore::delComment(ut64 addr)
+void CutterCore::delComment(RVA addr)
 {
     cmd("CC- @ " + QString::number(addr));
     emit commentsChanged();
@@ -384,19 +369,16 @@ void CutterCore::seekNext()
 RVA CutterCore::prevOpAddr(RVA startAddr, int count)
 {
     CORE_LOCK();
-    RVA prev;
-    if (!r_core_prevop_addr(core_, startAddr, count, &prev))
-    {
-        prev = startAddr - count;
-    }
-    return prev;
+    bool ok;
+    RVA offset = cmd("/O " + QString::number(count) + " @ " + QString::number(startAddr)).toULongLong(&ok, 16);
+    return ok ? offset : startAddr - count;
 }
 
 RVA CutterCore::nextOpAddr(RVA startAddr, int count)
 {
     CORE_LOCK();
 
-    QJsonArray array = Core()->cmdj("pdj " + QString::number(count) + "@" + QString::number(startAddr)).array();
+    QJsonArray array = Core()->cmdj("pdj " + QString::number(count+1) + "@" + QString::number(startAddr)).array();
     if (array.isEmpty())
     {
         return startAddr + 1;
@@ -457,44 +439,6 @@ ut64 CutterCore::math(const QString &expr)
     return r_num_math(this->core_ ? this->core_->num : NULL, expr.toUtf8().constData());
 }
 
-int CutterCore::fcnCyclomaticComplexity(ut64 addr)
-{
-    CORE_LOCK();
-    RAnalFunction *fcn = r_anal_get_fcn_at(core_->anal, addr, addr);
-    if (fcn)
-        return r_anal_fcn_cc(fcn);
-    return 0;
-}
-
-int CutterCore::fcnBasicBlockCount(ut64 addr)
-{
-    CORE_LOCK();
-    //RAnalFunction *fcn = r_anal_get_fcn_at (core_->anal, addr, addr);
-    RAnalFunction *fcn = r_anal_get_fcn_in(core_->anal, addr, 0);
-    if (fcn)
-    {
-        return r_list_length(fcn->bbs);
-    }
-    return 0;
-}
-
-int CutterCore::fcnEndBbs(RVA addr)
-{
-    CORE_LOCK();
-    RAnalFunction *fcn = r_anal_get_fcn_in(core_->anal, addr, 0);
-    if (fcn)
-    {
-        QString tmp = this->cmd("afi @ " + QString::number(addr) + " ~end-bbs").split("\n")[0];
-        if (tmp.contains(":"))
-        {
-            QString endbbs = tmp.split(": ")[1];
-            return endbbs.toInt();
-        }
-    }
-
-    return 0;
-}
-
 QString CutterCore::itoa(ut64 num, int rdx)
 {
     return QString::number(num, rdx);
@@ -539,6 +483,11 @@ void CutterCore::triggerRefreshAll()
 void CutterCore::triggerAsmOptionsChanged()
 {
     emit asmOptionsChanged();
+}
+
+void CutterCore::triggerGraphOptionsChanged()
+{
+    emit graphOptionsChanged();
 }
 
 void CutterCore::resetDefaultAsmOptions()
@@ -665,6 +614,20 @@ QString CutterCore::cmdFunctionAt(RVA addr)
     return cmdFunctionAt(QString::number(addr));
 }
 
+QString CutterCore::createFunctionAt(RVA addr, QString name)
+{
+    name.remove(QRegExp("[^a-zA-Z0-9_]"));
+    QString command = "af " + name + " " + RAddressString(addr);
+    QString ret = cmd(command);
+    emit functionsChanged();
+    return ret;
+}
+
+void CutterCore::markString(RVA addr)
+{
+    cmd("Cs @" + RAddressString(addr));
+}
+
 int CutterCore::get_size()
 {
     CORE_LOCK();
@@ -719,6 +682,11 @@ RVA CutterCore::getOffsetJump(RVA addr)
     }
 
     return value;
+}
+
+QString CutterCore::getDecompiledCode(RVA addr)
+{
+    return cmd("pdc @ " + QString::number(addr));
 }
 
 QString CutterCore::getDecompiledCode(QString addr)
@@ -1207,6 +1175,46 @@ QList<EntrypointDescription> CutterCore::getAllEntrypoint()
     return ret;
 }
 
+QList<ClassDescription> CutterCore::getAllClasses()
+{
+    CORE_LOCK();
+    QList<ClassDescription> ret;
+
+    QJsonArray classesArray = cmdj("icj").array();
+    for (QJsonValueRef value : classesArray)
+    {
+        QJsonObject classObject = value.toObject();
+
+        ClassDescription cls;
+        cls.name = classObject["classname"].toString();
+        cls.addr = classObject["addr"].toVariant().toULongLong();
+        cls.index = classObject["index"].toVariant().toULongLong();
+
+        for(QJsonValueRef value2 : classObject["methods"].toArray())
+        {
+            QJsonObject methObject = value2.toObject();
+
+            ClassMethodDescription meth;
+            meth.name = methObject["name"].toString();
+            meth.addr = methObject["addr"].toVariant().toULongLong();
+            cls.methods << meth;
+        }
+
+        for(QJsonValueRef value2 : classObject["fields"].toArray())
+        {
+            QJsonObject fieldObject = value2.toObject();
+
+            ClassFieldDescription field;
+            field.name = fieldObject["name"].toString();
+            field.addr = fieldObject["addr"].toVariant().toULongLong();
+            cls.fields << field;
+        }
+
+        ret << cls;
+    }
+    return ret;
+}
+
 QList<XrefDescription> CutterCore::getXRefs(RVA addr, bool to, bool whole_function, const QString &filterType)
 {
     QList<XrefDescription> ret = QList<XrefDescription>();
@@ -1299,4 +1307,69 @@ void CutterCore::setNotes(const QString &notes)
 {
     this->notes = notes;
     emit notesChanged(this->notes);
+}
+
+QList<DisassemblyLine> CutterCore::disassembleLines(RVA offset, int lines)
+{
+    QJsonArray array = cmdj(QString("pdJ ") + QString::number(lines) + QString(" @ ") + QString::number(offset)).array();
+    QList<DisassemblyLine> r;
+
+    for (QJsonValue value : array)
+    {
+        QJsonObject object = value.toObject();
+
+        DisassemblyLine line;
+        line.offset = object["offset"].toVariant().toULongLong();
+        line.text = object["text"].toString();
+
+        r << line;
+    }
+
+    return r;
+}
+
+void CutterCore::loadScript(const QString &scriptname)
+{
+    r_core_cmd_file(core_, scriptname.toStdString().data());
+}
+
+QString CutterCore::getVersionInformation()
+{
+    int i;
+    QString ret;
+    struct vcs_t {
+        const char *name;
+        const char *(*callback)();
+    } vcs[] = {
+        { "r_anal", &r_anal_version },
+        { "r_lib", &r_lib_version },
+        { "r_egg", &r_egg_version },
+        { "r_asm", &r_asm_version },
+        { "r_bin", &r_bin_version },
+        { "r_cons", &r_cons_version },
+        { "r_flag", &r_flag_version },
+        { "r_core", &r_core_version },
+        { "r_crypto", &r_crypto_version },
+        { "r_bp", &r_bp_version },
+        { "r_debug", &r_debug_version },
+        { "r_hash", &r_hash_version },
+        { "r_fs", &r_fs_version },
+        { "r_io", &r_io_version },
+        { "r_magic", &r_magic_version },
+        { "r_parse", &r_parse_version },
+        { "r_reg", &r_reg_version },
+        { "r_sign", &r_sign_version },
+        { "r_search", &r_search_version },
+        { "r_syscall", &r_syscall_version },
+        { "r_util", &r_util_version },
+        /* ... */
+        {NULL,NULL}
+    };
+    ret.append(QString("%1 r2\n").arg(R2_GITTAP));
+    for (i = 0; vcs[i].name; i++) {
+            struct vcs_t *v = &vcs[i];
+            const char *name = v->callback ();
+            ret.append(QString("%1 %2\n").arg(name, v->name));
+    }
+    return ret;
 }

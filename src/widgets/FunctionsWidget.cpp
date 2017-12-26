@@ -25,7 +25,7 @@ FunctionModel::FunctionModel(QList<FunctionDescription> *functions, QSet<RVA> *i
 
 {
     connect(Core(), SIGNAL(seekChanged(RVA)), this, SLOT(seekChanged(RVA)));
-    connect(Core(), SIGNAL(functionRenamed(QString, QString)), this, SLOT(functionRenamed(QString, QString)));
+    connect(Core(), SIGNAL(functionRenamed(const QString &, const QString &)), this, SLOT(functionRenamed(QString, QString)));
 }
 
 QModelIndex FunctionModel::index(int row, int column, const QModelIndex &parent) const
@@ -70,6 +70,11 @@ int FunctionModel::columnCount(const QModelIndex &/*parent*/) const
         return ColumnCount;
 }
 
+bool FunctionModel::functionIsImport(ut64 addr) const
+{
+    return import_addresses->contains(addr);
+}
+
 
 QVariant FunctionModel::data(const QModelIndex &index, int role) const
 {
@@ -108,7 +113,7 @@ QVariant FunctionModel::data(const QModelIndex &index, int role) const
                 case 1:
                     return tr("Size: %1").arg(RSizeString(function.size));
                 case 2:
-                    return tr("Import: %1").arg(import_addresses->contains(function.offset) ? tr("true") : tr("false"));
+                    return tr("Import: %1").arg(functionIsImport(function.offset) ? tr("true") : tr("false"));
                 default:
                     return QVariant();
                 }
@@ -159,6 +164,11 @@ QVariant FunctionModel::data(const QModelIndex &index, int role) const
         return QVariant();
     }
 
+    case Qt::ForegroundRole:
+        if (functionIsImport(function.offset))
+            return QVariant(ConfigColor("gui.imports"));
+        return QVariant(QColor(Qt::black));
+
     case FunctionDescriptionRole:
         return QVariant::fromValue(function);
 
@@ -206,6 +216,14 @@ void FunctionModel::beginReloadFunctions()
 
 void FunctionModel::endReloadFunctions()
 {
+    updateCurrentIndex();
+    endResetModel();
+}
+
+void FunctionModel::setNested(bool nested)
+{
+    beginResetModel();
+    this->nested = nested;
     updateCurrentIndex();
     endResetModel();
 }
@@ -333,13 +351,13 @@ FunctionsWidget::FunctionsWidget(MainWindow *main, QWidget *parent) :
     //ui->filterLineEdit->setVisible(false);
 
     // Ctrl-F to show/hide the filter entry
-    QShortcut *search_shortcut = new QShortcut(QKeySequence(Qt::CTRL + Qt::Key_F), this);
-    connect(search_shortcut, SIGNAL(activated()), this, SLOT(show_filter()));
+    QShortcut *search_shortcut = new QShortcut(QKeySequence::Find, this);
+    connect(search_shortcut, &QShortcut::activated, ui->quickFilterView, &QuickFilterView::showFilter);
     search_shortcut->setContext(Qt::WidgetWithChildrenShortcut);
 
     // Esc to clear the filter entry
     QShortcut *clear_shortcut = new QShortcut(QKeySequence(Qt::Key_Escape), this);
-    connect(clear_shortcut, SIGNAL(activated()), this, SLOT(clear_filter()));
+    connect(clear_shortcut, &QShortcut::activated, ui->quickFilterView, &QuickFilterView::clearFilter);
     clear_shortcut->setContext(Qt::WidgetWithChildrenShortcut);
 
     QFontInfo font_info = ui->functionsTreeView->fontInfo();
@@ -348,31 +366,19 @@ FunctionsWidget::FunctionsWidget(MainWindow *main, QWidget *parent) :
 
     function_model = new FunctionModel(&functions, &import_addresses, false, default_font, highlight_font, this);
     function_proxy_model = new FunctionSortFilterProxyModel(function_model, this);
-    connect(ui->filterLineEdit, SIGNAL(textChanged(const QString &)), function_proxy_model, SLOT(setFilterWildcard(const QString &)));
     ui->functionsTreeView->setModel(function_proxy_model);
     ui->functionsTreeView->sortByColumn(FunctionModel::NameColumn, Qt::AscendingOrder);
 
-    nested_function_model = new FunctionModel(&functions, &import_addresses, true, default_font, highlight_font, this);
-    nested_function_proxy_model = new FunctionSortFilterProxyModel(nested_function_model, this);
-    connect(ui->filterLineEdit, SIGNAL(textChanged(const QString &)), nested_function_proxy_model, SLOT(setFilterWildcard(const QString &)));
-    ui->nestedFunctionsTreeView->setModel(nested_function_proxy_model);
-    ui->nestedFunctionsTreeView->sortByColumn(0, Qt::AscendingOrder);
+    connect(ui->quickFilterView, SIGNAL(filterTextChanged(const QString &)), function_proxy_model, SLOT(setFilterWildcard(const QString &)));
+    connect(ui->quickFilterView, SIGNAL(filterClosed()), ui->functionsTreeView, SLOT(setFocus()));
 
     setScrollMode();
 
     // Set Functions context menu
     connect(ui->functionsTreeView, SIGNAL(customContextMenuRequested(const QPoint &)),
             this, SLOT(showFunctionsContextMenu(const QPoint &)));
-    connect(ui->nestedFunctionsTreeView, SIGNAL(customContextMenuRequested(const QPoint &)),
-            this, SLOT(showFunctionsContextMenu(const QPoint &)));
-
 
     connect(ui->functionsTreeView, SIGNAL(doubleClicked(const QModelIndex &)), this, SLOT(functionsTreeView_doubleClicked(const QModelIndex &)));
-    connect(ui->nestedFunctionsTreeView, SIGNAL(doubleClicked(const QModelIndex &)), this, SLOT(functionsTreeView_doubleClicked(const QModelIndex &)));
-
-    // Hide the tabs
-    QTabBar *tabs = ui->tabWidget->tabBar();
-    tabs->setVisible(false);
 
     // Use a custom context menu on the dock title bar
     //this->title_bar = this->titleBarWidget();
@@ -381,6 +387,7 @@ FunctionsWidget::FunctionsWidget(MainWindow *main, QWidget *parent) :
     connect(this, SIGNAL(customContextMenuRequested(const QPoint &)),
             this, SLOT(showTitleContextMenu(const QPoint &)));
 
+    connect(Core(), SIGNAL(functionsChanged()), this, SLOT(refreshTree()));
     connect(Core(), SIGNAL(refreshAll()), this, SLOT(refreshTree()));
 }
 
@@ -389,7 +396,6 @@ FunctionsWidget::~FunctionsWidget() {}
 void FunctionsWidget::refreshTree()
 {
     function_model->beginReloadFunctions();
-    nested_function_model->beginReloadFunctions();
 
     functions = CutterCore::getInstance()->getAllFunctions();
 
@@ -398,20 +404,11 @@ void FunctionsWidget::refreshTree()
         import_addresses.insert(import.plt);
 
     function_model->endReloadFunctions();
-    nested_function_model->endReloadFunctions();
 
     // resize offset and size columns
     ui->functionsTreeView->resizeColumnToContents(0);
     ui->functionsTreeView->resizeColumnToContents(1);
     ui->functionsTreeView->resizeColumnToContents(2);
-}
-
-QTreeView *FunctionsWidget::getCurrentTreeView()
-{
-    if (ui->tabWidget->currentIndex() == 0)
-        return ui->functionsTreeView;
-    else
-        return ui->nestedFunctionsTreeView;
 }
 
 void FunctionsWidget::functionsTreeView_doubleClicked(const QModelIndex &index)
@@ -422,18 +419,16 @@ void FunctionsWidget::functionsTreeView_doubleClicked(const QModelIndex &index)
 
 void FunctionsWidget::showFunctionsContextMenu(const QPoint &pt)
 {
-    QTreeView *treeView = getCurrentTreeView();
-
     // Set functions popup menu
     QMenu *menu = new QMenu(ui->functionsTreeView);
     menu->clear();
     menu->addAction(ui->actionDisasAdd_comment);
     menu->addAction(ui->actionFunctionsRename);
-    //menu->addAction(ui->actionFunctionsUndefine);
+    menu->addAction(ui->actionFunctionsUndefine);
     menu->addSeparator();
     menu->addAction(ui->action_References);
 
-    menu->exec(treeView->mapToGlobal(pt));
+    menu->exec(ui->functionsTreeView->mapToGlobal(pt));
 
     delete menu;
 }
@@ -441,8 +436,7 @@ void FunctionsWidget::showFunctionsContextMenu(const QPoint &pt)
 void FunctionsWidget::on_actionDisasAdd_comment_triggered()
 {
     // Get selected item in functions tree view
-    QTreeView *treeView = getCurrentTreeView();
-    FunctionDescription function = treeView->selectionModel()->currentIndex().data(FunctionModel::FunctionDescriptionRole).value<FunctionDescription>();
+    FunctionDescription function = ui->functionsTreeView->selectionModel()->currentIndex().data(FunctionModel::FunctionDescriptionRole).value<FunctionDescription>();
 
     // Create dialog
     CommentsDialog *c = new CommentsDialog(this);
@@ -462,8 +456,7 @@ void FunctionsWidget::on_actionDisasAdd_comment_triggered()
 void FunctionsWidget::on_actionFunctionsRename_triggered()
 {
     // Get selected item in functions tree view
-    QTreeView *treeView = getCurrentTreeView();
-    FunctionDescription function = treeView->selectionModel()->currentIndex().data(FunctionModel::FunctionDescriptionRole).value<FunctionDescription>();
+    FunctionDescription function = ui->functionsTreeView->selectionModel()->currentIndex().data(FunctionModel::FunctionDescriptionRole).value<FunctionDescription>();
 
     // Create dialog
     RenameDialog *r = new RenameDialog(this);
@@ -491,11 +484,16 @@ void FunctionsWidget::on_actionFunctionsRename_triggered()
     }
 }
 
+void FunctionsWidget::on_actionFunctionsUndefine_triggered()
+{
+    FunctionDescription function = ui->functionsTreeView->selectionModel()->currentIndex().data(FunctionModel::FunctionDescriptionRole).value<FunctionDescription>();
+    Core()->delFunction(function.offset);
+}
+
 void FunctionsWidget::on_action_References_triggered()
 {
     // Get selected item in functions tree view
-    QTreeView *treeView = getCurrentTreeView();
-    FunctionDescription function = treeView->selectionModel()->currentIndex().data(FunctionModel::FunctionDescriptionRole).value<FunctionDescription>();
+    FunctionDescription function = ui->functionsTreeView->selectionModel()->currentIndex().data(FunctionModel::FunctionDescriptionRole).value<FunctionDescription>();
     XrefsDialog *x = new XrefsDialog(this);
     x->fillRefsForAddress(function.offset, function.name, true);
     x->exec();
@@ -509,7 +507,7 @@ void FunctionsWidget::showTitleContextMenu(const QPoint &pt)
     menu->addAction(ui->actionHorizontal);
     menu->addAction(ui->actionVertical);
 
-    if (ui->tabWidget->currentIndex() == 0)
+    if (!function_model->isNested())
     {
         ui->actionHorizontal->setChecked(true);
         ui->actionVertical->setChecked(false);
@@ -528,12 +526,14 @@ void FunctionsWidget::showTitleContextMenu(const QPoint &pt)
 
 void FunctionsWidget::on_actionHorizontal_triggered()
 {
-    ui->tabWidget->setCurrentIndex(0);
+    function_model->setNested(false);
+    ui->functionsTreeView->setIndentation(8);
 }
 
 void FunctionsWidget::on_actionVertical_triggered()
 {
-    ui->tabWidget->setCurrentIndex(1);
+    function_model->setNested(true);
+    ui->functionsTreeView->setIndentation(20);
 }
 
 void FunctionsWidget::resizeEvent(QResizeEvent *event)
@@ -557,32 +557,4 @@ void FunctionsWidget::resizeEvent(QResizeEvent *event)
 void FunctionsWidget::setScrollMode()
 {
     qhelpers::setVerticalScrollMode(ui->functionsTreeView);
-}
-
-void FunctionsWidget::show_filter()
-{
-    ui->filterLineEdit->setVisible(true);
-    ui->closeFilterButton->setVisible(true);
-    ui->filterLineEdit->setFocus();
-}
-
-void FunctionsWidget::clear_filter()
-{
-    if (ui->filterLineEdit->text() == "")
-    {
-        ui->filterLineEdit->setVisible(false);
-        ui->closeFilterButton->setVisible(false);
-        ui->functionsTreeView->setFocus();
-    }
-    else
-    {
-        ui->filterLineEdit->setText("");
-    }
-}
-
-void FunctionsWidget::on_closeFilterButton_clicked()
-{
-    ui->filterLineEdit->setVisible(false);
-    ui->closeFilterButton->setVisible(false);
-    ui->functionsTreeView->setFocus();
 }

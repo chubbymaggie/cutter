@@ -36,6 +36,11 @@ public:
     // Colors
     const QColor getColor(const QString &name) const;
     void setDarkTheme(bool set);
+    bool getDarkTheme()                 { return s.value("dark").toBool(); }
+
+    // Graph
+    int getGraphBlockMaxChars() const   { return s.value("graph.maxcols", 50).toInt(); }
+    void setGraphBlockMaxChars(int ch)  { s.setValue("graph.maxcols", ch); }
 
     // TODO Imho it's wrong doing it this way. Should find something else.
     bool getAsmESIL() const             { return s.value("asm.esil", false).toBool(); }

@@ -1,10 +1,9 @@
 #include "MainWindow.h"
 #include "ui_MainWindow.h"
-#include "dialogs/CreateNewDialog.h"
 #include "dialogs/CommentsDialog.h"
 #include "dialogs/AboutDialog.h"
 #include "dialogs/RenameDialog.h"
-#include "dialogs/AsmOptionsDialog.h"
+#include "dialogs/preferences/PreferencesDialog.h"
 #include "utils/Helpers.h"
 
 #include <QComboBox>
@@ -34,12 +33,15 @@
 #include <QToolButton>
 #include <QToolTip>
 #include <QTreeWidgetItem>
+#include <QSvgRenderer>
 
 #include "utils/Highlighter.h"
 #include "utils/HexAsciiHighlighter.h"
 #include "utils/Helpers.h"
-#include "dialogs/NewFileDialog.h"
+#include "utils/SvgIconEngine.h"
 
+#include "dialogs/NewFileDialog.h"
+#include "widgets/DisassemblerGraphView.h"
 #include "widgets/FunctionsWidget.h"
 #include "widgets/SectionsWidget.h"
 #include "widgets/CommentsWidget.h"
@@ -50,7 +52,7 @@
 #include "widgets/SectionsDock.h"
 #include "widgets/RelocsWidget.h"
 #include "widgets/FlagsWidget.h"
-#include "widgets/CodeGraphic.h"
+#include "widgets/VisualNavbar.h"
 #include "widgets/Dashboard.h"
 #include "widgets/Notepad.h"
 #include "widgets/Sidebar.h"
@@ -60,6 +62,7 @@
 #include "dialogs/OptionsDialog.h"
 #include "widgets/EntrypointWidget.h"
 #include "dialogs/SaveProjectDialog.h"
+#include "widgets/ClassesWidget.h"
 
 // graphics
 #include <QGraphicsEllipseItem>
@@ -84,13 +87,14 @@ MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
     core(CutterCore::getInstance()),
     notepadDock(nullptr),
+    pseudocodeDock(nullptr),
     asmDock(nullptr),
     calcDock(nullptr),
     omnibar(nullptr),
     ui(new Ui::MainWindow),
     highlighter(nullptr),
     hex_highlighter(nullptr),
-    graphicsBar(nullptr),
+    visualNavbar(nullptr),
     entrypointDock(nullptr),
     functionsDock(nullptr),
     importsDock(nullptr),
@@ -104,18 +108,16 @@ MainWindow::MainWindow(QWidget *parent) :
     gotoEntry(nullptr),
     sdbDock(nullptr),
     sectionsDock(nullptr),
-    consoleWidget(nullptr)
+    consoleDock(nullptr)
 {
-    doLock = false;
+    panelLock = false;
+    tabsOnTop = false;
     configuration = new Configuration();
 }
 
 MainWindow::~MainWindow()
 {
 }
-
-#include <QSvgRenderer>
-#include "utils/SvgIconEngine.h"
 
 void MainWindow::initUI()
 {
@@ -129,8 +131,6 @@ void MainWindow::initUI()
     // Hide central tab widget tabs
     QTabBar *centralbar = ui->centralTabWidget->tabBar();
     centralbar->setVisible(false);
-    consoleWidget = new ConsoleWidget(this);
-    ui->tabVerticalLayout->addWidget(consoleWidget);
 
     // Sepparator between back/forward and undo/redo buttons
     QWidget *spacer4 = new QWidget();
@@ -170,26 +170,32 @@ void MainWindow::initUI()
     spacer->setMinimumSize(20, 20);
     ui->mainToolBar->addWidget(spacer);
 
-    // codeGraphics tool bar
-    this->graphicsBar = new GraphicsBar(this);
-    this->graphicsBar->setMovable(false);
+    // Visual navigation tool bar
+    this->visualNavbar = new VisualNavbar(this);
+    this->visualNavbar->setMovable(false);
     addToolBarBreak(Qt::TopToolBarArea);
-    addToolBar(graphicsBar);
+    addToolBar(visualNavbar);
 
     /*
      * Dock Widgets
      */
     dockWidgets.reserve(14);
 
-    // Add disassembly view (dockable)
-    this->disassemblyDock = new DisassemblyWidget(tr("Disassembly"), this);
-    dockWidgets.push_back(disassemblyDock);
-
-    sidebarDock = new SidebarWidget(tr("Sidebar"), this);
-    dockWidgets.push_back(sidebarDock);
-
-    hexdumpDock = new HexdumpWidget(tr("Hexdump"), this);
-    dockWidgets.push_back(hexdumpDock);
+#define ADD_DOCK(cls, dockMember, action) \
+{ \
+    (dockMember) = new cls(this); \
+    dockWidgets.push_back(dockMember); \
+    connect((action), &QAction::triggered, this, [this](bool checked) \
+    { \
+        toggleDockWidget((dockMember), checked); \
+    }); \
+    dockWidgetActions[action] = (dockMember); \
+}
+    ADD_DOCK(DisassemblyWidget, disassemblyDock, ui->actionDisassembly);
+    ADD_DOCK(SidebarWidget, sidebarDock, ui->actionSidebar);
+    ADD_DOCK(HexdumpWidget, hexdumpDock, ui->actionHexdump);
+    ADD_DOCK(PseudocodeWidget, pseudocodeDock, ui->actionPseudocode);
+    ADD_DOCK(ConsoleWidget, consoleDock, ui->actionConsole);
 
     // Add graph view as dockable
     graphDock = new QDockWidget(tr("Graph"), this);
@@ -197,6 +203,10 @@ void MainWindow::initUI()
     graphDock->setAllowedAreas(Qt::AllDockWidgetAreas);
     graphView = new DisassemblerGraphView(graphDock);
     graphDock->setWidget(graphView);
+
+    // Hide centralWidget as we do not need it
+    ui->centralWidget->hide();
+
     connect(graphDock, &QDockWidget::visibilityChanged, graphDock, [](bool visibility)
     {
         if (visibility)
@@ -213,54 +223,27 @@ void MainWindow::initUI()
         }
     });
     dockWidgets.push_back(graphDock);
+    connect(ui->actionGraph, &QAction::triggered, this, [this](bool checked)
+    {
+        toggleDockWidget(graphDock, checked);
+    });
 
-    // Add Sections dock panel
-    this->sectionsDock = new SectionsDock(this);
-    dockWidgets.push_back(sectionsDock);
+    ADD_DOCK(SectionsDock, sectionsDock, ui->actionSections);
+    ADD_DOCK(EntrypointWidget, entrypointDock, ui->actionEntrypoints);
+    ADD_DOCK(FunctionsWidget, functionsDock, ui->actionFunctions);
+    ADD_DOCK(ImportsWidget, importsDock, ui->actionImports);
+    ADD_DOCK(ExportsWidget, exportsDock, ui->actionExports);
+    ADD_DOCK(SymbolsWidget, symbolsDock, ui->actionSymbols);
+    ADD_DOCK(RelocsWidget, relocsDock, ui->actionRelocs);
+    ADD_DOCK(CommentsWidget, commentsDock, ui->actionComments);
+    ADD_DOCK(StringsWidget, stringsDock, ui->actionStrings);
+    ADD_DOCK(FlagsWidget, flagsDock, ui->actionFlags);
+    ADD_DOCK(Notepad, notepadDock, ui->actionNotepad);
+    ADD_DOCK(Dashboard, dashboardDock, ui->actionDashboard);
+    ADD_DOCK(SdbDock, sdbDock, ui->actionSDBBrowser);
+    ADD_DOCK(ClassesWidget, classesDock, ui->actionClasses);
 
-    // Add entrypoint DockWidget
-    this->entrypointDock = new EntrypointWidget(this);
-    dockWidgets.push_back(entrypointDock);
-
-    // Add functions DockWidget
-    this->functionsDock = new FunctionsWidget(this);
-    dockWidgets.push_back(functionsDock);
-
-    // Add imports DockWidget
-    this->importsDock = new ImportsWidget(this);
-    dockWidgets.push_back(importsDock);
-
-    // Add exports DockWidget
-    this->exportsDock = new ExportsWidget(this);
-    dockWidgets.push_back(exportsDock);
-
-    // Add symbols DockWidget
-    this->symbolsDock = new SymbolsWidget(this);
-    dockWidgets.push_back(symbolsDock);
-
-    // Add relocs DockWidget
-    this->relocsDock = new RelocsWidget(this);
-    dockWidgets.push_back(relocsDock);
-
-    // Add comments DockWidget
-    this->commentsDock = new CommentsWidget(this);
-    dockWidgets.push_back(commentsDock);
-
-    // Add strings DockWidget
-    this->stringsDock = new StringsWidget(this);
-    dockWidgets.push_back(stringsDock);
-
-    // Add flags DockWidget
-    this->flagsDock = new FlagsWidget(this);
-    dockWidgets.push_back(flagsDock);
-
-    // Add Notepad Dock panel
-    this->notepadDock = new Notepad(this);
-    dockWidgets.push_back(notepadDock);
-
-    //Add Dashboard Dock panel
-    this->dashboardDock = new Dashboard(this);
-    dockWidgets.push_back(dashboardDock);
+#undef ADD_DOCK
 
     // Set up dock widgets default layout
     resetToDefaultLayout();
@@ -283,17 +266,13 @@ void MainWindow::initUI()
      */
     // Period goes to command entry
     QShortcut *cmd_shortcut = new QShortcut(QKeySequence(Qt::Key_Period), this);
-    connect(cmd_shortcut, SIGNAL(activated()), consoleWidget, SLOT(focusInputLineEdit()));
+    connect(cmd_shortcut, SIGNAL(activated()), consoleDock, SLOT(focusInputLineEdit()));
 
     // G and S goes to goto entry
     QShortcut *goto_shortcut = new QShortcut(QKeySequence(Qt::Key_G), this);
     connect(goto_shortcut, SIGNAL(activated()), this->omnibar, SLOT(setFocus()));
     QShortcut *seek_shortcut = new QShortcut(QKeySequence(Qt::Key_S), this);
     connect(seek_shortcut, SIGNAL(activated()), this->omnibar, SLOT(setFocus()));
-
-    // : goes to goto entry
-    QShortcut *commands_shortcut = new QShortcut(QKeySequence(Qt::Key_Colon), this);
-    connect(commands_shortcut, SIGNAL(activated()), this->omnibar, SLOT(showCommands()));
 
     QShortcut *refresh_shortcut = new QShortcut(QKeySequence(QKeySequence::Refresh), this);
     connect(refresh_shortcut, SIGNAL(activated()), this, SLOT(refreshAll()));
@@ -305,12 +284,30 @@ void MainWindow::openNewFile(const QString &fn, int anal_level, QList<QString> a
 {
     setFilename(fn);
 
+    /* Reset config */
+    core->resetDefaultAsmOptions();
+
+    /* Prompt to load filename.r2 script */
+    QString script = QString("%1.r2").arg(this->filename);
+    if (r_file_exists(script.toStdString().data())) {
+        QMessageBox mb;
+        mb.setWindowTitle(tr("Script loading"));
+        mb.setText(tr("Do you want to load the '%1' script?").arg(script));
+        mb.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
+        if (mb.exec() == QMessageBox::Yes) {
+            core->loadScript(script);
+        }
+    }
+
+    /* Show analysis options dialog */
     OptionsDialog *o = new OptionsDialog(this);
     o->setAttribute(Qt::WA_DeleteOnClose);
     o->show();
 
     if (anal_level >= 0)
+    {
         o->setupAndStartAnalysis(anal_level, advanced);
+    }
 }
 
 void MainWindow::openProject(const QString &project_name)
@@ -343,10 +340,6 @@ void MainWindow::finalizeOpen()
         core->setNotes(tr("# Binary information\n\n") + core->cmd("i") +
                        "\n" + core->cmd("ie") + "\n" + core->cmd("iM") + "\n");
     }
-
-    //Get binary beginning/end addresses
-    this->core->binStart = this->core->cmd("?v $M");
-    this->core->binEnd = this->core->cmd("?v $M+$s");
 
     addOutput(tr(" > Finished, happy reversing :)"));
     // Add fortune message
@@ -412,11 +405,7 @@ void MainWindow::closeEvent(QCloseEvent *event)
     {
         if (saveProject(true))
         {
-            QSettings settings;
-            settings.setValue("geometry", saveGeometry());
-            settings.setValue("size", size());
-            settings.setValue("pos", pos());
-            settings.setValue("state", saveState());
+            saveSettings();
             QMainWindow::closeEvent(event);
         }
         else
@@ -426,11 +415,7 @@ void MainWindow::closeEvent(QCloseEvent *event)
     }
     else if (ret == QMessageBox::Discard)
     {
-        QSettings settings;
-        settings.setValue("geometry", saveGeometry());
-        settings.setValue("size", size());
-        settings.setValue("pos", pos());
-        settings.setValue("state", saveState());
+        saveSettings();
     }
     else
     {
@@ -446,6 +431,60 @@ void MainWindow::readSettings()
     QByteArray state = settings.value("state", QByteArray()).toByteArray();
     restoreState(state);
     this->responsive = settings.value("responsive").toBool();
+    panelLock = settings.value("panelLock").toBool();
+    setPanelLock();
+    tabsOnTop = settings.value("tabsOnTop").toBool();
+    setTabLocation();
+    updateDockActionsChecked();
+}
+
+void MainWindow::saveSettings()
+{
+    QSettings settings;
+    settings.setValue("geometry", saveGeometry());
+    settings.setValue("size", size());
+    settings.setValue("pos", pos());
+    settings.setValue("state", saveState());
+    settings.setValue("panelLock", panelLock);
+    settings.setValue("tabsOnTop", tabsOnTop);
+}
+
+void MainWindow::setPanelLock()
+{
+    if (panelLock)
+    {
+        foreach (QDockWidget *dockWidget, findChildren<QDockWidget *>())
+        {
+            dockWidget->setFeatures(QDockWidget::NoDockWidgetFeatures);
+        }
+
+        ui->actionLock->setChecked(false);
+    }
+    else
+    {
+        foreach (QDockWidget *dockWidget, findChildren<QDockWidget *>())
+        {
+            dockWidget->setFeatures(QDockWidget::AllDockWidgetFeatures);
+        }
+
+        ui->actionLock->setChecked(true);
+    }
+}
+
+void MainWindow::setTabLocation()
+{
+    if (tabsOnTop)
+    {
+        ui->centralTabWidget->setTabPosition(QTabWidget::North);
+        this->setTabPosition(Qt::AllDockWidgetAreas, QTabWidget::North);
+        ui->actionTabs_on_Top->setChecked(true);
+    }
+    else
+    {
+        ui->centralTabWidget->setTabPosition(QTabWidget::South);
+        this->setTabPosition(Qt::AllDockWidgetAreas, QTabWidget::South);
+        ui->actionTabs_on_Top->setChecked(false);
+    }
 }
 
 void MainWindow::setDarkTheme()
@@ -466,21 +505,8 @@ void MainWindow::refreshAll()
 
 void MainWindow::on_actionLock_triggered()
 {
-    doLock = !doLock;
-    if (doLock)
-    {
-        foreach (QDockWidget *dockWidget, findChildren<QDockWidget *>())
-        {
-            dockWidget->setFeatures(QDockWidget::NoDockWidgetFeatures);
-        }
-    }
-    else
-    {
-        foreach (QDockWidget *dockWidget, findChildren<QDockWidget *>())
-        {
-            dockWidget->setFeatures(QDockWidget::AllDockWidgetFeatures);
-        }
-    }
+    panelLock = !panelLock;
+    setPanelLock();
 }
 
 void MainWindow::lockUnlock_Docks(bool what)
@@ -524,71 +550,8 @@ void MainWindow::on_actionLockUnlock_triggered()
 
 void MainWindow::on_actionTabs_triggered()
 {
-    if (ui->centralTabWidget->tabPosition() == QTabWidget::South)
-    {
-        ui->centralTabWidget->setTabPosition(QTabWidget::North);
-        this->setTabPosition(Qt::AllDockWidgetAreas, QTabWidget::North);
-    }
-    else
-    {
-        ui->centralTabWidget->setTabPosition(QTabWidget::South);
-        this->setTabPosition(Qt::AllDockWidgetAreas, QTabWidget::South);
-    }
-}
-
-void MainWindow::on_actionEntry_points_triggered()
-{
-    toggleDockWidget(entrypointDock);
-}
-
-void MainWindow::on_actionFunctions_triggered()
-{
-    toggleDockWidget(functionsDock);
-}
-
-void MainWindow::on_actionImports_triggered()
-{
-    toggleDockWidget(importsDock);
-}
-
-void MainWindow::on_actionExports_triggered()
-{
-    toggleDockWidget(exportsDock);
-}
-
-void MainWindow::on_actionSymbols_triggered()
-{
-    toggleDockWidget(symbolsDock);
-}
-
-void MainWindow::on_actionReloc_triggered()
-{
-    toggleDockWidget(relocsDock);
-}
-
-void MainWindow::on_actionStrings_triggered()
-{
-    toggleDockWidget(stringsDock);
-}
-
-void MainWindow::on_actionSections_triggered()
-{
-    toggleDockWidget(sectionsDock);
-}
-
-void MainWindow::on_actionFlags_triggered()
-{
-    toggleDockWidget(flagsDock);
-}
-
-void MainWindow::on_actionComents_triggered()
-{
-    toggleDockWidget(commentsDock);
-}
-
-void MainWindow::on_actionNotepad_triggered()
-{
-    toggleDockWidget(notepadDock);
+    tabsOnTop = !tabsOnTop;
+    setTabLocation();
 }
 
 void MainWindow::on_actionAbout_triggered()
@@ -602,9 +565,9 @@ void MainWindow::on_actionRefresh_Panels_triggered()
     this->refreshAll();
 }
 
-void MainWindow::toggleDockWidget(QDockWidget *dock_widget)
+void MainWindow::toggleDockWidget(QDockWidget *dock_widget, bool show)
 {
-    if (dock_widget->isVisible())
+    if (!show)
     {
         dock_widget->close();
     }
@@ -625,38 +588,34 @@ void MainWindow::on_actionForward_triggered()
     core->seekNext();
 }
 
-void MainWindow::on_actionCreate_File_triggered()
-{
-    CreateNewDialog *n = new CreateNewDialog(this);
-    n->exec();
-}
-
 void MainWindow::on_actionDisasAdd_comment_triggered()
 {
     CommentsDialog *c = new CommentsDialog(this);
     c->exec();
+    delete c;
 }
 
 void MainWindow::restoreDocks()
 {
-    // bottom right
-    addDockWidget(Qt::RightDockWidgetArea, sectionsDock);
-
-    // left
+    // In the upper half the functions are the first widget
     addDockWidget(Qt::TopDockWidgetArea, functionsDock);
 
-    // center
+    // Function | Dashboard | Sidebar
     splitDockWidget(functionsDock, dashboardDock, Qt::Horizontal);
-
-    // right (sidebar)
     splitDockWidget(dashboardDock, sidebarDock, Qt::Horizontal);
 
+    // In the lower half the console is the first widget
+    addDockWidget(Qt::BottomDockWidgetArea, consoleDock);
+
+    // Console | Sections
+    splitDockWidget(consoleDock, sectionsDock, Qt::Horizontal);
 
     // tabs for center (must be applied after splitDockWidget())
     tabifyDockWidget(sectionsDock, commentsDock);
     tabifyDockWidget(dashboardDock, disassemblyDock);
     tabifyDockWidget(dashboardDock, graphDock);
     tabifyDockWidget(dashboardDock, hexdumpDock);
+    tabifyDockWidget(dashboardDock, pseudocodeDock);
     tabifyDockWidget(dashboardDock, entrypointDock);
     tabifyDockWidget(dashboardDock, flagsDock);
     tabifyDockWidget(dashboardDock, stringsDock);
@@ -665,9 +624,11 @@ void MainWindow::restoreDocks()
     tabifyDockWidget(dashboardDock, exportsDock);
     tabifyDockWidget(dashboardDock, symbolsDock);
     tabifyDockWidget(dashboardDock, notepadDock);
+    tabifyDockWidget(dashboardDock, classesDock);
 
     dashboardDock->raise();
-    sectionsDock->raise();
+
+    updateDockActionsChecked();
 }
 
 
@@ -676,6 +637,16 @@ void MainWindow::hideAllDocks()
     for (auto w : dockWidgets)
     {
         w->hide();
+    }
+
+    updateDockActionsChecked();
+}
+
+void MainWindow::updateDockActionsChecked()
+{
+    for(auto i=dockWidgetActions.constBegin(); i!=dockWidgetActions.constEnd(); i++)
+    {
+        i.key()->setChecked(!i.value()->isHidden());
     }
 }
 
@@ -686,6 +657,7 @@ void MainWindow::showDefaultDocks()
                                                 functionsDock,
                                                 commentsDock,
                                                 stringsDock,
+                                                consoleDock,
                                                 importsDock,
                                                 symbolsDock,
                                                 notepadDock,
@@ -693,6 +665,7 @@ void MainWindow::showDefaultDocks()
                                                 disassemblyDock,
                                                 sidebarDock,
                                                 hexdumpDock,
+                                                pseudocodeDock,
                                                 dashboardDock
                                               };
 
@@ -703,6 +676,8 @@ void MainWindow::showDefaultDocks()
             w->show();
         }
     }
+
+    updateDockActionsChecked();
 }
 
 void MainWindow::resetToDefaultLayout()
@@ -731,18 +706,6 @@ void MainWindow::on_actionDefaut_triggered()
     resetToDefaultLayout();
 }
 
-void MainWindow::on_actionhide_bottomPannel_triggered()
-{
-    if (ui->centralWidget->isVisible())
-    {
-        ui->centralWidget->hide();
-    }
-    else
-    {
-        ui->centralWidget->show();
-    }
-}
-
 void MainWindow::sendToNotepad(const QString &txt)
 {
     core->setNotes(core->getNotes() + "```\n" + txt + "\n```");
@@ -758,19 +721,18 @@ void MainWindow::on_actionFunctionsRename_triggered()
 
 void MainWindow::addOutput(const QString &msg)
 {
-    consoleWidget->addOutput(msg);
+    consoleDock->addOutput(msg);
 }
 
 void MainWindow::addDebugOutput(const QString &msg)
 {
     printf("debug output: %s\n", msg.toLocal8Bit().constData());
-    consoleWidget->addDebugOutput(msg);
+    consoleDock->addDebugOutput(msg);
 }
 
 void MainWindow::on_actionNew_triggered()
 {
-    if (close())
-        on_actionLoad_triggered();
+    on_actionLoad_triggered();
 }
 
 void MainWindow::on_actionSave_triggered()
@@ -817,32 +779,11 @@ void MainWindow::on_actionWhite_Theme_triggered()
     this->setDefaultTheme();
 }
 
-void MainWindow::on_actionSDBBrowser_triggered()
-{
-    this->sdbDock = new SdbDock(this);
-    //this->tabifyDockWidget(this->previewDock, this->sdbDock);
-    this->sdbDock->setFloating(true);
-    this->sdbDock->show();
-}
-
 void MainWindow::on_actionLoad_triggered()
 {
     QProcess process(this);
     process.setEnvironment(QProcess::systemEnvironment());
     process.startDetached(qApp->applicationFilePath());
-}
-
-void MainWindow::on_actionDashboard_triggered()
-{
-    if (this->dashboardDock->isVisible())
-    {
-        this->dashboardDock->close();
-    }
-    else
-    {
-        this->dashboardDock->show();
-        this->dashboardDock->raise();
-    }
 }
 
 void MainWindow::toggleResponsive(bool maybe)
@@ -880,9 +821,9 @@ void MainWindow::on_actionRefresh_contents_triggered()
     refreshAll();
 }
 
-void MainWindow::on_actionAsmOptions_triggered()
+void MainWindow::on_actionPreferences_triggered()
 {
-    auto dialog = new AsmOptionsDialog(this);
+    auto dialog = new PreferencesDialog(this);
     dialog->show();
 }
 

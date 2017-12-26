@@ -18,7 +18,7 @@ Configuration* Configuration::instance()
 
 void Configuration::loadInitial()
 {
-    setDarkTheme(s.value("dark").toBool());
+    setDarkTheme(getDarkTheme());
 }
 
 void Configuration::resetAll()
@@ -45,6 +45,7 @@ void Configuration::loadDefaultTheme()
     QColor color7 = QColor(215, 135, 0);
     QColor color8 = QColor(108, 108, 108);
     QColor color9 = QColor(96, 48, 0);
+    QColor colorA = QColor(50, 140, 255);
 
     QColor highlightColor = QColor(210, 210, 255);
 
@@ -114,6 +115,8 @@ void Configuration::loadDefaultTheme()
     setColor("gui.background", QColor(255, 255, 255));
     // Disassembly nodes background
     setColor("gui.alt_background", QColor(245, 250, 255));
+    // Custom
+    setColor("gui.imports", colorA);
 
 }
 
@@ -126,9 +129,10 @@ void Configuration::loadDarkTheme()
     QColor color4 = QColor(128, 235, 200);
     QColor color5 = QColor(95, 95, 175);
     QColor color6 = QColor(255, 235, 95);
-    QColor color7 = QColor(255, 200, 0);
+    QColor color7 = QColor(255, 130, 0);
     QColor color8 = QColor(108, 108, 108);
-    QColor color9 = QColor(255, 200, 0);
+    QColor color9 = QColor(255, 130, 0);
+    QColor colorA = QColor(50, 140, 255);
 
     QColor highlightColor = QColor(64, 115, 115);
 
@@ -198,6 +202,8 @@ void Configuration::loadDarkTheme()
     setColor("gui.background", QColor(36, 66, 79));
     // Disassembly nodes background
     setColor("gui.alt_background", QColor(58, 100, 128));
+    // Custom
+    setColor("gui.imports", colorA);
 }
 
 const QFont Configuration::getFont() const

@@ -232,16 +232,12 @@
                </spacer>
               </item>
               <item>
-               <widget class="QPushButton" name="createButton">
-                <property name="text">
-                 <string>Create</string>
-                </property>
-               </widget>
-              </item>
-              <item>
                <widget class="QPushButton" name="loadFileButton">
                 <property name="text">
                  <string>Open</string>
+                </property>
+                <property name="default">
+                 <bool>true</bool>
                 </property>
                </widget>
               </item>
@@ -401,7 +397,7 @@
     </layout>
    </item>
    <item>
-    <layout class="QHBoxLayout" name="buttonBar" stretch="0,0">
+    <layout class="QHBoxLayout" name="buttonBar" stretch="0,0,0,0">
      <property name="spacing">
       <number>10</number>
      </property>
@@ -409,32 +405,32 @@
       <number>0</number>
      </property>
      <item>
+      <spacer name="horizontalSpacer_4">
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>500</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="aboutButton">
+       <property name="text">
+        <string>About</string>
+       </property>
+      </widget>
+     </item>
+     <item>
       <widget class="QPushButton" name="cancelButton">
        <property name="text">
         <string>Close</string>
        </property>
       </widget>
      </item>
-	<item>
-	  <spacer name="horizontalSpacer_4">
-		<property name="orientation">
-		  <enum>Qt::Horizontal</enum>
-		</property>
-		<property name="sizeHint" stdset="0">
-		  <size>
-			<width>500</width>
-			<height>20</height>
-		  </size>
-		</property>
-	  </spacer>
-	</item>
-	<item>
-	  <widget class="QPushButton" name="aboutButton">
-		<property name="text">
-		  <string>About</string>
-		</property>
-	  </widget>
-	</item>
      <item>
       <spacer name="horizontalSpacer">
        <property name="orientation">
@@ -466,13 +462,10 @@
   <customwidget>
    <class>QSvgWidget</class>
    <extends>QWidget</extends>
-   <header>qsvgwidget.h</header>
+   <header>QSvgWidget</header>
    <container>1</container>
   </customwidget>
  </customwidgets>
- <resources>
-  <include location="../resources.qrc"/>
-  <include location="../resources.qrc"/>
- </resources>
+ <resources/>
  <connections/>
 </ui>

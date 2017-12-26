@@ -24,8 +24,9 @@ OptionsDialog::OptionsDialog(MainWindow *main):
     setWindowFlags(windowFlags() & (~Qt::WindowContextHelpButtonHint));
     ui->progressBar->setVisible(0);
     ui->statusLabel->setVisible(0);
+    ui->elapsedLabel->setVisible(0);
 
-    QString logoFile = (palette().window().color().value() < 127) ? ":/img/cutter_white.svg" : ":/img/cutter.svg";
+    QString logoFile = (palette().window().color().value() < 127) ? ":/img/cutter_white_plain.svg" : ":/img/cutter_plain.svg";
     ui->logoSvgWidget->load(logoFile);
 
     ui->analSlider->setValue(defaultAnalLevel);
@@ -63,6 +64,7 @@ OptionsDialog::OptionsDialog(MainWindow *main):
     //this->layout()->setSizeConstraint(QLayout::SetFixedSize);
 
     connect(&analThread, SIGNAL(finished()), this, SLOT(anal_finished()));
+    connect(ui->cancelButton, SIGNAL(clicked()), this, SLOT(reject()));
 
     ui->programLineEdit->setText(main->getFilename());
     QFileInfo fi(this->main->getFilename());
@@ -86,6 +88,13 @@ void OptionsDialog::updateCPUComboBox()
     ui->cpuComboBox->addItems(core->cmdList(cmd));
 
     ui->cpuComboBox->lineEdit()->setText(currentText);
+}
+
+void OptionsDialog::setInteractionEnabled(bool enabled)
+{
+    ui->optionsWidget->setEnabled(enabled);
+    ui->okButton->setEnabled(enabled);
+    ui->cancelButton->setEnabled(enabled);
 }
 
 QString OptionsDialog::getSelectedArch()
@@ -123,20 +132,26 @@ void OptionsDialog::setupAndStartAnalysis(int level, QList<QString> advanced)
 {
     ui->analSlider->setValue(level);
 
-    this->setEnabled(0);
+    setInteractionEnabled(false);
 
     // Show Progress Bar
-    ui->progressBar->setEnabled(1);
-    ui->statusLabel->setEnabled(1);
-    ui->progressBar->setVisible(1);
-    ui->statusLabel->setVisible(1);
+    ui->progressBar->setVisible(true);
+    ui->statusLabel->setVisible(true);
+    ui->elapsedLabel->setVisible(true);
 
     ui->statusLabel->setText(tr("Starting analysis"));
     //ui->progressBar->setValue(5);
 
     main->initUI();
 
-    core->resetDefaultAsmOptions();
+    // Timer for showing elapsed analysis time.
+    analTimer.setInterval(1000);
+    analTimer.setSingleShot(false);
+    analTimer.start();
+    analElapsedTimer.start();
+
+    updateProgressTimer();
+    connect(&analTimer, SIGNAL(timeout()), this, SLOT(updateProgressTimer()));
 
     // Threads stuff
     // connect signal/slot
@@ -144,14 +159,30 @@ void OptionsDialog::setupAndStartAnalysis(int level, QList<QString> advanced)
     analThread.start(main, level, advanced);
 }
 
+void OptionsDialog::updateProgressTimer()
+{
+    int secondsElapsed = (analElapsedTimer.elapsed()+500)/1000;
+    int minutesElapsed = secondsElapsed / 60;
+    int hoursElapsed = minutesElapsed / 60;
+
+    QString label = tr("Running for") + " ";
+    if(hoursElapsed)
+    {
+        label += tr("%n hour", "%n hours", hoursElapsed);
+        label += " ";
+    }
+    if(minutesElapsed)
+    {
+        label += tr("%n minute", "%n minutes", minutesElapsed % 60);
+        label += " ";
+    }
+    label += tr("%n seconds", "%n second", secondsElapsed % 60);
+    ui->elapsedLabel->setText(label);
+}
+
 void OptionsDialog::updateProgress(const QString &status)
 {
     ui->statusLabel->setText(status);
-}
-
-void OptionsDialog::on_closeButton_clicked()
-{
-    close();
 }
 
 void OptionsDialog::on_okButton_clicked()
@@ -222,18 +253,7 @@ void OptionsDialog::anal_finished()
     main->addOutput(tr(" > Analysis finished"));
 
     main->finalizeOpen();
-    close();
-}
-
-void OptionsDialog::on_cancelButton_clicked()
-{
-    //delete this->core;
-    //this->core = NULL;
-    // Close dialog and open OptionsDialog
-    delete main;
-    close();
-    NewFileDialog *n = new NewFileDialog(nullptr);
-    n->show();
+    done(0);
 }
 
 QString OptionsDialog::analysisDescription(int level)
@@ -325,4 +345,12 @@ void OptionsDialog::on_pdbSelectButton_clicked()
     {
         ui->pdbLineEdit->setText(fileName);
     }
+}
+
+void OptionsDialog::reject()
+{
+    delete main;
+    done(0);
+    NewFileDialog *n = new NewFileDialog(nullptr);
+    n->show();
 }

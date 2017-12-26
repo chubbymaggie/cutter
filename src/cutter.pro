@@ -48,11 +48,9 @@ SOURCES += \
     utils/HexHighlighter.cpp \
     utils/Highlighter.cpp \
     utils/MdHighlighter.cpp \
-    dialogs/AsmOptionsDialog.cpp \
-    dialogs/CreateNewDialog.cpp \
+    dialogs/preferences/AsmOptionsWidget.cpp \
     dialogs/NewFileDialog.cpp \
     AnalThread.cpp \
-    widgets/CodeGraphic.cpp \
     widgets/CommentsWidget.cpp \
     widgets/ConsoleWidget.cpp \
     widgets/Dashboard.cpp \
@@ -79,7 +77,16 @@ SOURCES += \
     utils/Colors.cpp \
     dialogs/SaveProjectDialog.cpp \
     utils/TempConfig.cpp \
-    utils/SvgIconEngine.cpp
+    utils/SvgIconEngine.cpp \
+    utils/SyntaxHighlighter.cpp \
+    widgets/PseudocodeWidget.cpp \
+    widgets/VisualNavbar.cpp \
+    widgets/GraphView.cpp \
+    dialogs/preferences/PreferencesDialog.cpp \
+    dialogs/preferences/GeneralOptionsWidget.cpp \
+    dialogs/preferences/GraphOptionsWidget.cpp \
+    widgets/QuickFilterView.cpp \
+    widgets/ClassesWidget.cpp
 
 HEADERS  += \
     cutter.h \
@@ -87,7 +94,7 @@ HEADERS  += \
     utils/RichTextPainter.h \
     utils/CachedFontMetrics.h \
     dialogs/AboutDialog.h \
-    dialogs/AsmOptionsDialog.h \
+    dialogs/preferences/AsmOptionsWidget.h \
     dialogs/CommentsDialog.h \
     dialogs/FlagDialog.h \
     dialogs/RenameDialog.h \
@@ -99,10 +106,8 @@ HEADERS  += \
     utils/Highlighter.h \
     utils/MdHighlighter.h \
     dialogs/OptionsDialog.h \
-    dialogs/CreateNewDialog.h \
     dialogs/NewFileDialog.h \
     AnalThread.h \
-    widgets/CodeGraphic.h \
     widgets/CommentsWidget.h \
     widgets/ConsoleWidget.h \
     widgets/Dashboard.h \
@@ -129,11 +134,20 @@ HEADERS  += \
     utils/Colors.h \
     dialogs/SaveProjectDialog.h \
     utils/TempConfig.h \
-    utils/SvgIconEngine.h
+    utils/SvgIconEngine.h \
+    utils/SyntaxHighlighter.h \
+    widgets/PseudocodeWidget.h \
+    widgets/VisualNavbar.h \
+    widgets/GraphView.h \
+    dialogs/preferences/PreferencesDialog.h \
+    dialogs/preferences/GeneralOptionsWidget.h \
+    dialogs/preferences/GraphOptionsWidget.h \
+    widgets/QuickFilterView.h \
+    widgets/ClassesWidget.h
 
 FORMS    += \
     dialogs/AboutDialog.ui \
-    dialogs/AsmOptionsDialog.ui \
+    dialogs/preferences/AsmOptionsWidget.ui \
     dialogs/CommentsDialog.ui \
     dialogs/FlagDialog.ui \
     dialogs/RenameDialog.ui \
@@ -141,7 +155,6 @@ FORMS    += \
     dialogs/NewfileDialog.ui \
     dialogs/OptionsDialog.ui \
     MainWindow.ui \
-    dialogs/CreateNewDialog.ui \
     widgets/CommentsWidget.ui \
     widgets/ConsoleWidget.ui \
     widgets/Dashboard.ui \
@@ -159,7 +172,13 @@ FORMS    += \
     widgets/SymbolsWidget.ui \
     widgets/SidebarWidget.ui \
     widgets/HexdumpWidget.ui \
-    dialogs/SaveProjectDialog.ui
+    dialogs/SaveProjectDialog.ui \
+    dialogs/preferences/PreferencesDialog.ui \
+    dialogs/preferences/GeneralOptionsWidget.ui \
+    dialogs/preferences/GraphOptionsWidget.ui \
+    widgets/QuickFilterView.ui \
+    widgets/PseudocodeWidget.ui \
+    widgets/ClassesWidget.ui
 
 RESOURCES += \
     resources.qrc
@@ -176,7 +195,7 @@ unix {
         PREFIX = /usr/local
     }
 
-    icon_file = img/cutter-small.png
+    icon_file = img/cutter.svg
 
     share_pixmaps.path = $$PREFIX/share/pixmaps
     share_pixmaps.files = $$icon_file
@@ -194,13 +213,10 @@ unix {
 
     # Triggered for example by 'qmake APPIMAGE=1'
     !isEmpty(APPIMAGE){
-        # UGLY work around for the logo name in cutter.desktop
-        # Would be better to have a file called cutter.png in the first place
-        system(cp img/cutter_appicon.svg $$OUT_PWD/cutter.svg)
-
         appimage_root.path = /
-        appimage_root.files = $$OUT_PWD/cutter.svg $$desktop_file
+        appimage_root.files = $$icon_file $$desktop_file
 
         INSTALLS += appimage_root
+        DEFINES += APPIMAGE
     }
 }

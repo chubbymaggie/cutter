@@ -11,7 +11,7 @@ Q_OBJECT
 
 public:
     DisassemblyContextMenu(QWidget *parent = nullptr);
-    ~DisassemblyContextMenu() = default;
+    ~DisassemblyContextMenu();
 
 signals:
     void copy();
@@ -26,11 +26,16 @@ private slots:
     void on_actionCopy_triggered();
 
     void on_actionAddComment_triggered();
+    void on_actionCreateFunction_triggered();
     void on_actionAddFlag_triggered();
     void on_actionRename_triggered();
     void on_actionRenameUsedHere_triggered();
     void on_actionXRefs_triggered();
     void on_actionDisplayOptions_triggered();
+
+    void on_actionDeleteComment_triggered();
+    void on_actionDeleteFlag_triggered();
+    void on_actionDeleteFunction_triggered();
 
     void on_actionSetBaseBinary_triggered();
     void on_actionSetBaseOctal_triggered();
@@ -53,15 +58,24 @@ private:
     RVA offset;
     bool canCopy;
 
+    QList<QAction*> anonymousActions;
+
     QAction actionCopy;
     QAction *copySeparator;
 
+
+
     QAction actionAddComment;
     QAction actionAddFlag;
+    QAction actionCreateFunction;
     QAction actionRename;
     QAction actionRenameUsedHere;
     QAction actionXRefs;
     QAction actionDisplayOptions;
+
+    QAction actionDeleteComment;
+    QAction actionDeleteFlag;
+    QAction actionDeleteFunction;
 
     QMenu *setBaseMenu;
     QAction *setBaseMenuAction;
@@ -73,5 +87,9 @@ private:
     QAction actionSetBaseIPAddr;
     QAction actionSetBaseSyscall;
     QAction actionSetBaseString;
+
+    // For creating anonymous entries (that are always visible)
+    void createAction(QString name, QKeySequence keySequence, const char *slot);
+    void createAction(QAction *action, QString name, QKeySequence keySequence, const char *slot);
 };
 #endif // DISASSEMBLYCONTEXTMENU_H

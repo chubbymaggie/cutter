@@ -35,6 +35,7 @@ cd cutter
 ```
 
 ##### Building radare2
+**/!\ WARNING /!\ This will delete your current radare2 version if any already installed.**
 ```sh
 git submodule init radare2 && git submodule update radare2
 cd radare2 && ./sys/install.sh
@@ -55,10 +56,9 @@ make
 
 - Method 2: CMake
 ```sh
-cd src
 mkdir build
 cd build
-cmake ..
+cmake ../src
 make
 ```
 
@@ -79,9 +79,31 @@ If you encounter the `Project ERROR: r_core development package not found` try t
 
 Cutter is developed on OS X, Linux and Windows. The first release for users will include installers for all three platforms.
 
-## Documentation
+## Keyboard shortcuts
 
-Proper documentation and website will be created before the first release.
+| Shortcut | Function |
+| --- | --- |
+| Global shortcuts: ||
+| . | Focus console input |
+| G & S | Focus search bar |
+| F5 | Refresh contents |
+| Disassembly view: ||
+| Esc | Seek to previous position |
+| Space | Switch to disassembly graph view |
+| Ctrl/Cmd+C | Copy |
+| ; | Add comment |
+| N | Rename current function/flag |
+| Shift+N | Rename flag/function used here |
+| X | Show Xrefs |
+| Disassembly graph view: ||
+| Esc | Seek to previous position |
+| Space | Switch to disassembly view |
+| + | Zoom in |
+| - | Zoom out |
+| = | Reset zoom |
+| J | Next instruction |
+| K | Previous instruction |
+
 
 ## Help
 
